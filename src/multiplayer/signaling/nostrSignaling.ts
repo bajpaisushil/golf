@@ -259,18 +259,41 @@ export function createNostrSignaling(options?: NostrSignalingOptions): Signaling
     };
     pool = nextPool;
 
-    // Try every relay in parallel; a relay that is down must not hold up the ones
-    // that are up, and one survivor is enough to play.
-    const attempts = relays.map(async (url) => {
-      await nextPool.ensureRelay(url, { connectionTimeout: RELAY_CONNECT_TIMEOUT_MS });
-      return url;
+    // Try every relay in parallel and CARRY ON AS SOON AS ONE ANSWERS.
+    //
+    // This must not be `Promise.allSettled`: a relay that accepts a TCP
+    // connection and then never completes its handshake takes the full
+    // connection timeout to fail, and waiting for it stalled joining a room by
+    // ~7 seconds even though four other relays were up within two. One survivor
+    // is enough to play; the stragglers keep connecting in the background and
+    // SimplePool starts using them when they arrive.
+    const reachable = await new Promise<boolean>((resolve) => {
+      let settledCount = 0;
+      let done = false;
+      const finish = (value: boolean): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(false), RELAY_CONNECT_TIMEOUT_MS + 500);
+
+      for (const url of relays) {
+        void nextPool
+          .ensureRelay(url, { connectionTimeout: RELAY_CONNECT_TIMEOUT_MS })
+          .then(() => finish(true))
+          .catch(() => undefined)
+          .finally(() => {
+            settledCount += 1;
+            // Everybody reported and nobody made it.
+            if (settledCount === relays.length && !done) finish(false);
+          });
+      }
     });
-    const settled = await Promise.allSettled(attempts);
-    const reachable = settled.filter((r) => r.status === 'fulfilled').length;
 
     if (closed) return err('signaling channel was closed while connecting');
 
-    if (reachable === 0) {
+    if (!reachable) {
       setStatus('error');
       try {
         nextPool.destroy();

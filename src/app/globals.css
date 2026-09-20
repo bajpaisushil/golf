@@ -1,0 +1,375 @@
+/*
+ * Friend Golf — design tokens + base layer.
+ *
+ * Art direction: "sunlit miniature". A deep dusk-to-turf gradient, warm off-white
+ * type, chunky rounded geometry, soft layered shadows and ONE confident accent
+ * (sunset coral). Everything is procedural — no downloaded fonts, images or
+ * textures anywhere (the perf budget forbids them).
+ *
+ * Tailwind v4: the @theme block below both defines the CSS variables AND generates
+ * the utility classes (bg-accent, rounded-xl, shadow-lift, ease-spring, ...).
+ * Because non-inline theme values are emitted as var() references, redefining the
+ * same custom properties further down (light mode) re-themes every utility.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* ---------- type: system stack only, zero network cost ---------- */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* ---------- palette (dark-leaning default) ---------- */
+  --color-ink: #04070a;
+  --color-night: #080f14;
+  --color-dusk: #1a1330;
+  --color-horizon: #43213a;
+  --color-turf: #0b2a22;
+
+  --color-surface: #101a20;
+  --color-raised: #17252c;
+  --color-sunk: #0a1317;
+  --color-line: #ffffff1a;
+  --color-line-strong: #ffffff33;
+
+  --color-text: #f6f2e9;
+  --color-muted: #a6b5b5;
+  --color-faint: #6f8384;
+
+  --color-accent: #ff8a4c;
+  --color-accent-hi: #ffb883;
+  --color-accent-lo: #d95a22;
+  --color-accent-ink: #2a0f04;
+
+  --color-good: #52dfa0;
+  --color-warn: #ffc24b;
+  --color-bad: #ff6f6f;
+
+  /* ---------- chunky, tactile geometry ---------- */
+  --radius-xs: 0.5rem;
+  --radius-sm: 0.75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.375rem;
+  --radius-xl: 1.75rem;
+  --radius-2xl: 2.25rem;
+  --radius-3xl: 2.75rem;
+
+  /* ---------- soft layered shadows ---------- */
+  --shadow-soft: 0 1px 0 0 #ffffff12 inset, 0 10px 24px -14px #000000a6;
+  --shadow-lift: 0 1px 0 0 #ffffff14 inset, 0 2px 4px -2px #0009, 0 18px 40px -20px #000c;
+  --shadow-pop: 0 1px 0 0 #ffffff1f inset, 0 10px 18px -12px #0009, 0 34px 64px -30px #000e;
+  --shadow-accent: 0 12px 34px -14px color-mix(in oklab, var(--color-accent) 60%, transparent);
+  --shadow-inset: inset 0 2px 8px -2px #00000080;
+
+  /* ---------- easings ---------- */
+  --ease-spring: cubic-bezier(0.2, 0.85, 0.25, 1);
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ---------- motion ---------- */
+  --animate-fg-spin: fg-spin 0.9s linear infinite;
+  --animate-fg-pulse: fg-pulse 2.4s var(--ease-in-out-soft) infinite;
+  --animate-fg-float: fg-float 5s var(--ease-in-out-soft) infinite;
+  --animate-fg-sheen: fg-sheen 2.6s var(--ease-in-out-soft) infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * Theme surfaces. --fg-backdrop is the one place the page gradient is described,
+ * so light mode only has to swap variables.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+  --fg-backdrop:
+    radial-gradient(58rem 34rem at 78% -8%, color-mix(in oklab, var(--color-accent) 22%, transparent) 0%, transparent 62%),
+    radial-gradient(52rem 38rem at 12% 2%, var(--color-dusk) 0%, transparent 64%),
+    radial-gradient(64rem 44rem at 50% 108%, var(--color-turf) 0%, transparent 70%),
+    linear-gradient(180deg, var(--color-night) 0%, var(--color-ink) 100%);
+  --fg-grain-opacity: 0.55;
+  --fg-grain-blend: soft-light;
+  --fg-panel-bg: color-mix(in oklab, var(--color-surface) 82%, transparent);
+  --fg-panel-bg-strong: color-mix(in oklab, var(--color-raised) 92%, transparent);
+  --fg-ring: color-mix(in oklab, var(--color-accent) 70%, white);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --color-night: #f4ece0;
+    --color-ink: #e7dccc;
+    --color-dusk: #efd9e6;
+    --color-turf: #cfe4d4;
+    --color-surface: #fffdf8;
+    --color-raised: #fffefb;
+    --color-sunk: #f0e7d9;
+    --color-line: #1b2b2812;
+    --color-line-strong: #1b2b2830;
+    --color-text: #131e1c;
+    --color-muted: #4e615e;
+    --color-faint: #7d8f8c;
+    --color-accent: #d8551d;
+    --color-accent-hi: #f07a43;
+    --color-accent-lo: #ab3f11;
+    --color-accent-ink: #fff4ec;
+    --color-good: #128a5c;
+    --color-warn: #a9720a;
+    --color-bad: #c03434;
+    --fg-grain-opacity: 0.4;
+    --fg-grain-blend: multiply;
+    --fg-panel-bg: color-mix(in oklab, var(--color-surface) 88%, transparent);
+    --fg-panel-bg-strong: var(--color-raised);
+    --fg-ring: color-mix(in oklab, var(--color-accent) 80%, black);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-night: #f4ece0;
+  --color-ink: #e7dccc;
+  --color-dusk: #efd9e6;
+  --color-turf: #cfe4d4;
+  --color-surface: #fffdf8;
+  --color-raised: #fffefb;
+  --color-sunk: #f0e7d9;
+  --color-line: #1b2b2812;
+  --color-line-strong: #1b2b2830;
+  --color-text: #131e1c;
+  --color-muted: #4e615e;
+  --color-faint: #7d8f8c;
+  --color-accent: #d8551d;
+  --color-accent-hi: #f07a43;
+  --color-accent-lo: #ab3f11;
+  --color-accent-ink: #fff4ec;
+  --color-good: #128a5c;
+  --color-warn: #a9720a;
+  --color-bad: #c03434;
+  --fg-grain-opacity: 0.4;
+  --fg-grain-blend: multiply;
+  --fg-panel-bg: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  --fg-panel-bg-strong: var(--color-raised);
+  --fg-ring: color-mix(in oklab, var(--color-accent) 80%, black);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base
+ * ------------------------------------------------------------------------- */
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    background-color: var(--color-night);
+    background-image: var(--fg-backdrop);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: scroll;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  /* One confident focus treatment everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--fg-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-accent) 45%, transparent);
+    color: var(--color-text);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Numeric UI (room codes, scores) should never wobble. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Components
+ * ------------------------------------------------------------------------- */
+
+@layer components {
+  /* Fixed procedural grain. CSS gradients only — zero image requests. */
+  .fg-grain {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--fg-grain-opacity);
+    mix-blend-mode: var(--fg-grain-blend);
+    background-image:
+      repeating-linear-gradient(0deg, #ffffff10 0 1px, #00000000 1px 3px),
+      repeating-linear-gradient(90deg, #ffffff0c 0 1px, #00000000 1px 4px),
+      repeating-conic-gradient(from 12deg at 37% 61%, #ffffff08 0deg 2deg, #00000000 2deg 9deg);
+    -webkit-mask-image: radial-gradient(130% 90% at 50% 18%, #000 20%, #0006 72%, #0000 100%);
+    mask-image: radial-gradient(130% 90% at 50% 18%, #000 20%, #0006 72%, #0000 100%);
+  }
+
+  /* The glassy, softly-lit card surface the whole app is built from. */
+  .fg-panel {
+    background-color: var(--fg-panel-bg);
+    background-image: linear-gradient(180deg, #ffffff0f 0%, #ffffff00 38%);
+    border: 1px solid var(--color-line);
+    box-shadow: var(--shadow-lift);
+    backdrop-filter: blur(14px) saturate(1.15);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  }
+
+  .fg-panel-strong {
+    background-color: var(--fg-panel-bg-strong);
+    background-image: linear-gradient(180deg, #ffffff14 0%, #ffffff00 42%);
+    border: 1px solid var(--color-line-strong);
+    box-shadow: var(--shadow-pop);
+  }
+
+  /* Recessed well: inputs, code tiles, meters. */
+  .fg-well {
+    background-color: color-mix(in oklab, var(--color-sunk) 78%, transparent);
+    border: 1px solid var(--color-line);
+    box-shadow: var(--shadow-inset);
+  }
+
+  /* Pressable feel for anything the thumb lands on. */
+  .fg-press {
+    touch-action: manipulation;
+    transition:
+      transform 0.16s var(--ease-spring),
+      box-shadow 0.2s var(--ease-spring),
+      background-color 0.2s var(--ease-spring),
+      border-color 0.2s var(--ease-spring),
+      opacity 0.2s var(--ease-spring);
+  }
+
+  .fg-press:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
+  }
+
+  /* Room code / initials. */
+  .fg-code {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.14em;
+  }
+
+  /* The 3D course host element — pointer drags must not scroll the page. */
+  .course-surface {
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .fg-scroll {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Safe-area helpers for notched phones. */
+  .pt-safe {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .px-safe {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Keyframes (all procedural, all cheap)
+ * ------------------------------------------------------------------------- */
+
+@keyframes fg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fg-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fg-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes fg-sheen {
+  0% {
+    background-position: -140% 0;
+  }
+  100% {
+    background-position: 240% 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Reduced motion. `.motion-keep` opts an element back in (loading spinners still
+ * need to signal progress) but even those are slowed right down.
+ * ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *:not(.motion-keep),
+  *:not(.motion-keep)::before,
+  *:not(.motion-keep)::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .motion-keep {
+    animation-duration: 2.4s !important;
+  }
+
+  .fg-press:active:not(:disabled) {
+    transform: none;
+  }
+}

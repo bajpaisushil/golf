@@ -167,10 +167,11 @@ export function loadIdentity(): RoomIdentity | null {
  * Persists the reconnect identity. Returns false when storage refused — callers
  * should carry on regardless, since losing this only costs a seat on refresh.
  */
-export function saveIdentity(identity: RoomIdentity, now?: number): boolean {
-  // Mirror into the expiring localStorage hint so a CLOSED tab can still rejoin.
-  // sessionStorage alone survives a refresh but dies with the tab.
-  saveResume(identity, typeof now === 'number' ? now : Date.now());
+export function saveIdentity(identity: RoomIdentity): boolean {
+  // NOTE: this deliberately does NOT write the resume hint. A hint is only worth
+  // offering once a game is actually under way — see `saveResume`, which the
+  // session calls when play starts. Writing it here meant opening a room and
+  // wandering off left a stale "rejoin" prompt for a game that never began.
   try {
     return writeRaw(
       'session',

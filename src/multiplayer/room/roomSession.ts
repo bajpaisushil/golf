@@ -143,6 +143,12 @@ export interface RoomSessionOptions {
   readonly settings?: Partial<GameSettings>;
   /** True when rejoining a room we were already in (same playerId). Default false. */
   readonly reconnect?: boolean;
+  /**
+   * True when this player originally created the room. Lets them take an EMPTY
+   * room back after a reload, instead of waiting forever for a WELCOME from a
+   * host that is no longer there.
+   */
+  readonly reclaimHost?: boolean;
   /** Injectable clock; tests pass a manual one and never touch real timers. */
   readonly clock?: HeartbeatClock;
 }
@@ -293,6 +299,9 @@ export function buildSnapshot(state: GameState): GameSnapshot {
 // The session
 // ---------------------------------------------------------------------------
 
+/** Heartbeats a room's creator waits, alone, before taking its room back. */
+const RECLAIM_AFTER_TICKS = 4;
+
 export function createRoomSession(options: RoomSessionOptions): RoomSession {
   const { identity, transport, mode } = options;
   const clock = options.clock ?? systemClock;
@@ -339,6 +348,8 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
   let closed = false;
   /** Guests: true once the host has answered our HELLO. */
   let welcomed = options.isHost;
+  /** Heartbeats spent waiting for a WELCOME that never came. */
+  let unwelcomedTicks = 0;
 
   let unsubMessages: Unsubscribe | null = null;
   let unsubPeers: Unsubscribe | null = null;
@@ -894,10 +905,22 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
     // handshake is unfinished we deliberately do NOT run elections - a peer that
     // has never been admitted must not crown itself host of a room it is not in.
     if (!welcomed) {
+      unwelcomedTicks += 1;
       sendHello();
       watchdog.reset(at);
+
+      // ...with one exception: the person who CREATED this room, reloading into
+      // an empty room. Nobody is left to welcome them, so without this they sit
+      // on "joining" forever and come back as a plain player in their own room.
+      // Requiring zero connected peers keeps this from ever racing a real host.
+      const alone = transport.peers().every((peer) => peer.state !== 'connected');
+      if (options.reclaimHost === true && alone && unwelcomedTicks >= RECLAIM_AFTER_TICKS) {
+        claimHost(at);
+        welcomed = true;
+      }
       return;
     }
+    unwelcomedTicks = 0;
 
     const seen = heartbeat.lastSeen(state.hostPlayerId);
     if (seen !== null) watchdog.noteHostSeen(seen);

@@ -61,7 +61,14 @@ import { err, ok } from '@/types';
 import { clampName } from '@/utils/format';
 import { newPeerId, newPlayerId } from '@/utils/id';
 import { generateRoomCode, isRoomCode, normaliseRoomCode } from '@/utils/roomCode';
-import { clearIdentity, loadIdentity, loadResume, saveIdentity } from '@/utils/storage';
+import {
+  clearIdentity,
+  clearResume,
+  loadIdentity,
+  loadResume,
+  saveIdentity,
+  saveResume,
+} from '@/utils/storage';
 import { holdIdentity, isIdentityHeld } from '@/utils/tabClaim';
 
 import { normaliseSettings } from './gameReducer';
@@ -233,7 +240,11 @@ async function buildIdentity(args: {
             ? hint.color
             : playerColorFor(0),
       roomCode: args.code,
-      createdRoom: args.createdRoom,
+      // Reloading into your own room goes through joinRoom(), which knows
+      // nothing about who created it. Keep the stored flag so the creator can
+      // still take an empty room back instead of returning as a plain player.
+      createdRoom:
+        args.createdRoom || (reuse && stored.createdRoom) || (resumable && hint.createdRoom),
       createdAt: Date.now(),
     },
   };
@@ -294,11 +305,23 @@ async function attachSession(args: {
     isHost: args.isHost,
     settings: args.settings,
     reconnect: args.reconnect,
+    // Creator of this room: may take it back if they reload into an empty room.
+    reclaimHost: args.identity.createdRoom,
   });
 
   const unsubscribes: Unsubscribe[] = [
     session.subscribe((state) => {
       useGameStore.getState().setGame(state);
+
+      // A resume hint is only worth keeping while a game is actually under way.
+      // Writing it the moment a room was created left people with a "rejoin"
+      // prompt for a game that never started; keeping it after the game ended
+      // offered to rejoin something finished.
+      if (state.status === 'playing' || state.status === 'round-summary') {
+        saveResume(args.identity, Date.now());
+      } else if (state.status === 'finished') {
+        clearResume();
+      }
     }),
     session.onEvent(handleSessionEvent),
     transport.onPeers((peers) => {

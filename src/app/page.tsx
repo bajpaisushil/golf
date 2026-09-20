@@ -32,7 +32,7 @@ import { isOk, type GameMode, type Hex, type RoomCode } from '@/types';
 import { clampName } from '@/utils/format';
 import { randomName } from '@/utils/names';
 import { roomCodeFromLocation } from '@/utils/share';
-import { lastNamePref, loadIdentity, rememberName } from '@/utils/storage';
+import { lastNamePref, loadIdentity, loadResume, rememberName, type ResumeHint } from '@/utils/storage';
 
 /** Stable first paint, then the real (stored or random) name lands on mount. */
 const SEED_NAME = 'Happy Fox';
@@ -56,10 +56,12 @@ export default function HomePage(): React.JSX.Element {
   const [joining, setJoining] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const lastError = useRef<string | null>(null);
+  const [storedResume, setStoredResume] = useState<ResumeHint | null>(null);
 
   // Identity + shared-link code are read after mount so the prerendered HTML
   // stays static (and so a random name never causes a hydration mismatch).
   useEffect(() => {
+    setStoredResume(loadResume(Date.now()));
     const remembered = lastNamePref();
     const saved = loadIdentity();
     const chosen = remembered !== '' ? remembered : (saved?.displayName ?? randomName());
@@ -85,7 +87,10 @@ export default function HomePage(): React.JSX.Element {
   }, [session.error, toast]);
 
   const busy = creating !== null || joining;
-  const resumeCode: RoomCode | null = session.game === null ? null : session.game.roomCode;
+  // A live session wins; otherwise fall back to the expiring localStorage hint so
+  // a refresh — or reopening the browser — can still get you back into the game.
+  const resumeCode: RoomCode | null =
+    session.game !== null ? session.game.roomCode : (storedResume?.roomCode ?? null);
 
   /** Whatever is in the field, or a fresh friendly name if they cleared it. */
   function finalName(): string {

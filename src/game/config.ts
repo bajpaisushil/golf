@@ -437,5 +437,7 @@ export const DEFAULT_BATTLE_ROUNDS = 5;
  */
 export const STORAGE_KEYS = {
   identity: 'fg.identity',
+  /** localStorage resume hint so a closed tab can rejoin. Carries an expiry. */
+  resume: 'fg.resume',
   prefs: 'fg.prefs',
 } as const;

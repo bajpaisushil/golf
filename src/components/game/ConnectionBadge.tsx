@@ -26,10 +26,18 @@ import { isLiveConnection } from '@/types';
 import { cn } from '@/utils/cn';
 
 // --- presentation thresholds (UI only; not gameplay tunables) ---------------
-/** Median RTT at or below this reads as a "strong" link. */
-const RTT_STRONG_MS = 90;
+/**
+ * Median RTT at or below this reads as a "strong" link.
+ *
+ * These are deliberately generous. A direct peer link between two friends on
+ * different continents sits happily around 200-300ms and plays perfectly well —
+ * this game sends one small message per shot, not sixty frames a second. The old
+ * 90ms/220ms thresholds flagged those healthy links as "weak", which read as
+ * "the connection is failing" when nothing was wrong.
+ */
+const RTT_STRONG_MS = 140;
 /** Median RTT at or below this reads as a "good" link. */
-const RTT_GOOD_MS = 220;
+const RTT_GOOD_MS = 320;
 /** How long a connection notice stays on screen before it dismisses itself. */
 const NOTICE_TTL_MS = 5200;
 

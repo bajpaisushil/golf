@@ -35,7 +35,9 @@ import {
   asPlayerId,
   asRoomCode,
   type Hex,
+  type PlayerId,
   type QualityTier,
+  type RoomCode,
   type RoomIdentity,
 } from '@/types';
 
@@ -165,7 +167,10 @@ export function loadIdentity(): RoomIdentity | null {
  * Persists the reconnect identity. Returns false when storage refused — callers
  * should carry on regardless, since losing this only costs a seat on refresh.
  */
-export function saveIdentity(identity: RoomIdentity): boolean {
+export function saveIdentity(identity: RoomIdentity, now?: number): boolean {
+  // Mirror into the expiring localStorage hint so a CLOSED tab can still rejoin.
+  // sessionStorage alone survives a refresh but dies with the tab.
+  saveResume(identity, typeof now === 'number' ? now : Date.now());
   try {
     return writeRaw(
       'session',
@@ -188,6 +193,86 @@ export function saveIdentity(identity: RoomIdentity): boolean {
 /** Forgets the reconnect identity. Called on "leave room" and on a clean game end. */
 export function clearIdentity(): void {
   removeRaw('session', STORAGE_KEYS.identity);
+  removeRaw('local', STORAGE_KEYS.resume);
+}
+
+// ---------------------------------------------------------------------------
+// Resume hint (localStorage, EXPIRING)
+// ---------------------------------------------------------------------------
+
+/**
+ * How long a closed tab can still offer to rejoin. Long enough to survive an
+ * accidental close or a browser restart mid-game, short enough that you are not
+ * greeted by last week's room.
+ */
+export const RESUME_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * A resume hint is deliberately NOT the identity.
+ *
+ * The identity stays in sessionStorage because it is per-TAB: if localStorage
+ * were authoritative, opening a second tab would make both tabs the same player
+ * and they would fight over one seat. The hint only powers a "rejoin your game"
+ * prompt; accepting it is what mints an identity into that tab's session.
+ */
+export function saveResume(identity: RoomIdentity, now: number): boolean {
+  try {
+    return writeRaw(
+      'local',
+      STORAGE_KEYS.resume,
+      JSON.stringify({
+        playerId: identity.playerId,
+        displayName: identity.displayName,
+        color: identity.color,
+        roomCode: identity.roomCode,
+        createdRoom: identity.createdRoom,
+        expiresAt: now + RESUME_TTL_MS,
+      }),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export interface ResumeHint {
+  readonly playerId: PlayerId;
+  readonly displayName: string;
+  readonly color: Hex;
+  readonly roomCode: RoomCode;
+  readonly createdRoom: boolean;
+  readonly expiresAt: number;
+}
+
+/** The stored resume hint, or null when absent, malformed or expired. */
+export function loadResume(now: number): ResumeHint | null {
+  const parsed = parseJson(readRaw('local', STORAGE_KEYS.resume));
+  if (!isRecord(parsed)) return null;
+
+  const playerId = asString(parsed['playerId']);
+  const displayName = asString(parsed['displayName']);
+  const roomCode = asString(parsed['roomCode']);
+  const color = asString(parsed['color']);
+  const expiresRaw = parsed['expiresAt'];
+  const expiresAt = typeof expiresRaw === 'number' && Number.isFinite(expiresRaw) ? expiresRaw : 0;
+
+  if (playerId === null || displayName === null || roomCode === null) return null;
+  if (expiresAt <= now) {
+    removeRaw('local', STORAGE_KEYS.resume);
+    return null;
+  }
+
+  return {
+    playerId: asPlayerId(playerId),
+    displayName: displayName.slice(0, LIMITS.MAX_NAME_LENGTH),
+    color: (color === null ? '#F2F4F8' : color) as Hex,
+    roomCode: asRoomCode(roomCode),
+    createdRoom: asBoolean(parsed['createdRoom'], false),
+    expiresAt,
+  };
+}
+
+export function clearResume(): void {
+  removeRaw('local', STORAGE_KEYS.resume);
 }
 
 /**

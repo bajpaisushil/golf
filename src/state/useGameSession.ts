@@ -61,7 +61,7 @@ import { err, ok } from '@/types';
 import { clampName } from '@/utils/format';
 import { newPeerId, newPlayerId } from '@/utils/id';
 import { generateRoomCode, isRoomCode, normaliseRoomCode } from '@/utils/roomCode';
-import { clearIdentity, loadIdentity, saveIdentity } from '@/utils/storage';
+import { clearIdentity, loadIdentity, loadResume, saveIdentity } from '@/utils/storage';
 
 import { normaliseSettings } from './gameReducer';
 import { useGameStore } from './store';
@@ -187,23 +187,38 @@ function deriveConnection(peers: readonly PeerInfo[]): ConnectionState {
 /**
  * Reuses the stored playerId when rejoining the SAME room, so a refresh comes
  * back as the same player holding the same score instead of as a ghost.
- * sessionStorage only, and it holds nothing sensitive: id, name, room code.
+ * sessionStorage for this tab, plus an EXPIRING localStorage hint so a closed
+ * tab can rejoin. Neither holds anything sensitive: id, name, room code.
  */
 function buildIdentity(args: {
   readonly name: string;
   readonly code: RoomCode;
   readonly createdRoom: boolean;
 }): { readonly identity: RoomIdentity; readonly reconnect: boolean } {
+  // This TAB's identity wins. It is the only per-tab record, so two tabs on one
+  // device stay two distinct players rather than fighting over one seat.
   const stored = loadIdentity();
   const reuse = stored !== null && stored.roomCode === args.code;
+
+  // Nothing in this tab, but the browser may still hold an unexpired resume hint
+  // from a tab that was closed. Reusing its playerId is what lets the host give
+  // the seat back instead of seating a duplicate player.
+  const hint = reuse ? null : loadResume(Date.now());
+  const resumable = hint !== null && hint.roomCode === args.code;
+
   return {
-    reconnect: reuse,
+    reconnect: reuse || resumable,
     identity: {
-      playerId: reuse ? stored.playerId : newPlayerId(),
+      playerId: reuse ? stored.playerId : resumable ? hint.playerId : newPlayerId(),
       // Always a fresh PeerId: the transport link is new even on a rejoin.
       peerId: newPeerId(),
       displayName: args.name,
-      color: reuse && stored.color.length > 0 ? stored.color : playerColorFor(0),
+      color:
+        reuse && stored.color.length > 0
+          ? stored.color
+          : resumable && hint.color.length > 0
+            ? hint.color
+            : playerColorFor(0),
       roomCode: args.code,
       createdRoom: args.createdRoom,
       createdAt: Date.now(),

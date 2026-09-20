@@ -128,3 +128,27 @@ describe('cooperative mode refuses to rank', () => {
     expect(ranks.size).toBe(1);
   });
 });
+
+describe('battle mode is an equal contest', () => {
+  it('gives every player the identical course, so stroke counts are comparable', async () => {
+    const { variantIndexFor } = await import('./competitive');
+    const { generateLevel } = await import('@/game/levels/generator');
+    const roster = [0, 1, 2, 3, 4, 5, 6, 7].map((joinSeq) => ({
+      id: pid(`p${joinSeq}`),
+      joinSeq,
+    })) as unknown as Parameters<typeof variantIndexFor>[0][];
+
+    const variants = roster.map((p) => variantIndexFor(p, 'battle'));
+    expect(new Set(variants).size, 'all players must share one variant').toBe(1);
+
+    // And that variant must produce one identical level for everyone.
+    const levels = variants.map((v) => JSON.stringify(generateLevel(4242, 2, v)));
+    expect(new Set(levels).size).toBe(1);
+  });
+
+  it('keeps co-op on a single shared course too', async () => {
+    const { variantIndexFor } = await import('./competitive');
+    const roster = [0, 1, 2].map((joinSeq) => ({ id: pid(`p${joinSeq}`), joinSeq })) as unknown as Parameters<typeof variantIndexFor>[0][];
+    expect(new Set(roster.map((p) => variantIndexFor(p, 'together'))).size).toBe(1);
+  });
+});

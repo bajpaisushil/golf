@@ -19,7 +19,7 @@ import { BATTLE_RULES } from '@/game/rules';
 export const COMPETITIVE_MODE: ModeDescriptor = {
   id: 'battle',
   name: 'Friend Battle',
-  tagline: 'Your own course each, all at once - fewest hits takes the round.',
+  tagline: 'Same course, everyone at once - fewest hits takes the round.',
   emoji: '\u{1F3AF}',
   minPlayers: LIMITS.MIN_PLAYERS,
   maxPlayers: LIMITS.MAX_PLAYERS,

@@ -57,7 +57,7 @@ const MODE_COPY: Readonly<Record<GameMode, { readonly title: string; readonly bl
   },
   battle: {
     title: 'Friend Battle',
-    blurb: 'Everyone gets their own course at the same time. Fewer hits scores more points.',
+    blurb: 'Everyone plays the same course at the same time. Fewer hits scores more points.',
   },
 };
 

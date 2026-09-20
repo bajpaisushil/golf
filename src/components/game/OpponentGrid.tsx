@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * OpponentGrid — every opponent's own course, live, in battle mode.
+ * OpponentGrid - every opponent's progress on the shared course, live, in battle mode.
  *
  * Battle mode gives each player an INDEPENDENT course and lets everyone play
  * simultaneously, which removes the one thing competitive games normally have:

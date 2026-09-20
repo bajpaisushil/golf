@@ -7,7 +7,7 @@
  * whole rhythm of co-op mode, so this gets a spring entrance and the active
  * player's own colour.
  *
- * In 'battle' nobody waits for anybody: every player has their own course and
+ * In 'battle' nobody waits for anybody: every player plays the same course and
  * plays at their own pace. So instead of a turn, it surfaces momentum —
  * "3 players still putting" — which is the only shared clock that mode has.
  *
@@ -34,6 +34,8 @@ export interface TurnBannerProps {
   readonly selfDnf?: boolean;
   /** 'battle' only: how many players have not finished the round yet. */
   readonly stillPutting?: number;
+  /** Strokes the local player has taken this round. Drives the first-shot hint. */
+  readonly selfStrokes?: number;
   /** A shot is animating — the banner steps back so it does not chatter. */
   readonly busy?: boolean;
   /** The round has finished but the summary is not up yet. */
@@ -64,6 +66,7 @@ export function turnBannerModel(props: TurnBannerProps): TurnBannerModel {
     selfHoled,
     selfDnf = false,
     stillPutting = 0,
+    selfStrokes = 0,
     busy = false,
     roundOver = false,
     selfColor,
@@ -107,18 +110,25 @@ export function turnBannerModel(props: TurnBannerProps): TurnBannerModel {
         emphatic: false,
       };
     }
+    // Everyone plays the SAME hole at the same time, so this banner is the only
+    // place that can tell a battle player it is their shot. It previously showed
+    // only "N players still putting", which reads as "wait" and never explains
+    // how to hit the ball — players got stuck staring at it.
+    const hint = 'Drag back from the ball, then let go';
     return {
       key: 'battle-playing',
-      title: 'Your course, your pace',
+      title: selfStrokes === 0 ? 'Take your shot' : 'Your shot',
       detail:
-        remaining > 1
-          ? `${remaining} players still putting`
-          : remaining === 1
-            ? 'You are the last one putting'
-            : null,
+        selfStrokes === 0
+          ? hint
+          : remaining > 1
+            ? `${remaining} players still putting`
+            : remaining === 1
+              ? 'You are the last one putting'
+              : hint,
       accent: selfColor,
-      pulse: false,
-      emphatic: false,
+      pulse: selfStrokes === 0,
+      emphatic: selfStrokes === 0,
     };
   }
 

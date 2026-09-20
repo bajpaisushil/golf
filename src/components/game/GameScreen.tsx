@@ -606,6 +606,7 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
               selfHoled={self.holed}
               selfDnf={!self.holed && self.strokes >= maxStrokes}
               stillPutting={stillPutting}
+              selfStrokes={self.strokes}
               busy={busy}
               roundOver={game.roundState?.completed ?? false}
               selfColor={self.color}

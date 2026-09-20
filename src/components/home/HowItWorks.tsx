@@ -5,7 +5,7 @@ import { LogoMark } from '@/components/brand';
 const STEPS: readonly { readonly title: string; readonly body: string }[] = [
   {
     title: 'Pick a mode',
-    body: 'Play Together shares one course and counts nobody out. Friend Battle gives everyone their own course at the same time.',
+    body: 'Play Together shares one course and counts nobody out. Friend Battle puts everyone on the same course at once - fewest hits wins.',
   },
   {
     title: 'Send the room code',

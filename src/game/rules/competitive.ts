@@ -90,9 +90,18 @@ export function maxStrokesOf(state: GameState): number {
  *                 which keeps the shared-course seed stable across modes).
  * - `together` -> always 0: ONE shared course for the whole room.
  */
-export function variantIndexFor(player: PlayerState, mode: GameMode): number {
-  if (mode !== 'battle') return 0;
-  return Math.max(0, safeInt(player.joinSeq, 0)) + 1;
+export function variantIndexFor(_player: PlayerState, _mode: GameMode): number {
+  // EVERY player plays the IDENTICAL hole, in both modes.
+  //
+  // Battle mode used to hand each player their own course (variantIndex =
+  // joinSeq + 1). That makes the round unscoreable: if one player draws an easy
+  // straight hole and another draws a chicane, comparing their stroke counts
+  // measures the courses, not the players. Equal competition requires an equal
+  // course, so the variant is pinned to 0 for everyone.
+  //
+  // Players still play SIMULTANEOUSLY on their own ball — they just share the
+  // same layout, which is exactly how a real group plays a hole.
+  return 0;
 }
 
 /**

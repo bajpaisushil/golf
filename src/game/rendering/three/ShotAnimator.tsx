@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { JSX, RefObject } from 'react';
-import type * as THREE from 'three';
+import * as THREE from 'three';
 
 import { PHYSICS } from '@/game/config';
 import type { BumperCircle, Hex, LevelSpec, ShotEvent } from '@/types';
@@ -33,6 +33,12 @@ export interface ShotAnimatorProps {
   /** Colour of the celebration burst; normally the shooting player's colour. */
   readonly burstColor?: Hex;
   readonly reducedMotion?: boolean;
+  /**
+   * 0 = rigid (follows the simulated samples exactly), 1 = volatile (heavily
+   * damped and floaty). Presentation only — it can never change where the ball
+   * ends up, so it cannot affect who wins. Defaults to RENDER3D.BALL_SMOOTHING.
+   */
+  readonly smoothing?: number;
 }
 
 interface AnimatorState {
@@ -42,9 +48,16 @@ interface AnimatorState {
   ended: boolean;
   impactAt: number;
   celebrated: boolean;
+  /** Previous rendered position, for rolling and smoothing. */
+  prevX: number;
+  prevZ: number;
+  hasPrev: boolean;
 }
 
 const IMPACT_KINDS: ReadonlySet<ShotEvent['kind']> = new Set<ShotEvent['kind']>(['wall', 'bumper']);
+
+/** Scratch roll axis — hoisted so the frame loop never allocates. */
+const ROLL_AXIS = new THREE.Vector3();
 
 export function ShotAnimator({
   playback,
@@ -54,6 +67,7 @@ export function ShotAnimator({
   effects,
   burstColor = '#F2F4F8',
   reducedMotion = false,
+  smoothing,
 }: ShotAnimatorProps): JSX.Element | null {
   const registry = useBallRegistry();
 
@@ -66,6 +80,14 @@ export function ShotAnimator({
     return list;
   }, [level]);
 
+  // Clamped once: a hostile or stale value must never make the ball crawl.
+  const smoothAmount = Math.max(
+    0,
+    Math.min(0.9, typeof smoothing === 'number' && Number.isFinite(smoothing)
+      ? smoothing
+      : RENDER3D.BALL_SMOOTHING),
+  );
+
   const stateRef = useRef<AnimatorState>({
     playback: null,
     target: null,
@@ -73,6 +95,9 @@ export function ShotAnimator({
     ended: false,
     impactAt: 0,
     celebrated: false,
+    prevX: 0,
+    prevZ: 0,
+    hasPrev: false,
   });
 
   // Never leave a ball squashed if the component unmounts mid-shot.
@@ -93,6 +118,7 @@ export function ShotAnimator({
       state.eventCursor = 0;
       state.ended = false;
       state.impactAt = 0;
+      state.hasPrev = false;
       state.celebrated = false;
     }
 
@@ -150,6 +176,34 @@ export function ShotAnimator({
       }
 
       const sinking = playback.holed && t >= 1;
+
+      // --- smoothing -------------------------------------------------------
+      // Presentation only: eases the corner off a hard bounce. Never feeds back
+      // into the simulation, so it cannot desync anyone.
+      const smooth = smoothAmount;
+      if (smooth > 0 && state.hasPrev) {
+        x = state.prevX + (x - state.prevX) * (1 - smooth);
+        z = state.prevZ + (z - state.prevZ) * (1 - smooth);
+      }
+
+      // --- rolling ---------------------------------------------------------
+      // The ball used to slide like a puck, which is most of why motion did not
+      // read as smooth. Turn the sphere about the axis perpendicular to travel,
+      // by exactly the distance covered over its radius.
+      const body = target.userData.body as THREE.Mesh | undefined;
+      if (body !== undefined && state.hasPrev && RENDER3D.BALL_ROLL > 0) {
+        const dx = x - state.prevX;
+        const dz = z - state.prevZ;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > 1e-5) {
+          ROLL_AXIS.set(dz / dist, 0, -dx / dist);
+          body.rotateOnWorldAxis(ROLL_AXIS, (dist / PHYSICS.BALL_RADIUS) * RENDER3D.BALL_ROLL);
+        }
+      }
+      state.prevX = x;
+      state.prevZ = z;
+      state.hasPrev = true;
+
       target.position.set(x, sinking ? PHYSICS.BALL_RADIUS * 0.45 : PHYSICS.BALL_RADIUS, z);
 
       // --- squash and stretch ---------------------------------------------

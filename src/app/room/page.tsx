@@ -230,6 +230,12 @@ function RoomRoute(): React.JSX.Element {
           session.startGame();
         }}
         onLeave={leave}
+        ballSmoothing={game.settings.ballSmoothing}
+        onChangeSmoothing={
+          canChangeSettings && changeSettings !== undefined
+            ? (value: number) => changeSettings({ ballSmoothing: value })
+            : null
+        }
         onChangeRounds={
           canChangeSettings && changeSettings !== undefined
             ? (rounds) => changeSettings({ totalRounds: rounds })

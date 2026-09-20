@@ -21,7 +21,7 @@
  * SHOT_RESOLVED overwrites it with absolute values - that is the drift repair.
  */
 
-import { LIMITS, playerColorFor } from '@/game/config';
+import { DEFAULT_BALL_SMOOTHING, LIMITS, playerColorFor } from '@/game/config';
 import { generateLevel } from '@/game/levels/generator';
 import {
   isEligibleForTurn,
@@ -841,5 +841,9 @@ export function normaliseSettings(settings: GameSettings): GameSettings {
       : Math.max(1, Math.min(LIMITS.MAX_ROUNDS, safeInt(settings.totalRounds, 1)));
   const maxStrokes = Math.max(1, safeInt(settings.maxStrokes, LIMITS.MAX_STROKES));
   const difficultyBias = Math.max(0, Math.min(1, Number.isFinite(settings.difficultyBias) ? settings.difficultyBias : 0));
-  return { ...settings, totalRounds, maxStrokes, difficultyBias };
+  const ballSmoothing = Math.max(
+    0,
+    Math.min(1, Number.isFinite(settings.ballSmoothing) ? settings.ballSmoothing : DEFAULT_BALL_SMOOTHING),
+  );
+  return { ...settings, totalRounds, maxStrokes, difficultyBias, ballSmoothing };
 }

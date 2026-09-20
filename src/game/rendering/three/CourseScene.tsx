@@ -163,6 +163,7 @@ export function CourseScene(props: CourseViewProps): JSX.Element {
     aim,
     quality,
     reducedMotion,
+    smoothing,
     onPlaybackEnd,
     onProjectorReady,
   } = props;
@@ -242,6 +243,7 @@ export function CourseScene(props: CourseViewProps): JSX.Element {
             effects={effectsRef}
             burstColor={shooter === null ? theme.accent : shooter.color}
             reducedMotion={reducedMotion}
+            smoothing={smoothing}
           />
         </group>
       </BallRegistryProvider>

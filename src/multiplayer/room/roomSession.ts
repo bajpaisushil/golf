@@ -213,6 +213,10 @@ function mergeSettings(base: GameSettings, patch?: Partial<GameSettings>): GameS
         ? Math.max(1, Math.floor(patch.maxStrokes))
         : base.maxStrokes,
     rankBy: patch.rankBy !== undefined ? patch.rankBy : base.rankBy,
+    ballSmoothing:
+      typeof patch.ballSmoothing === 'number' && Number.isFinite(patch.ballSmoothing)
+        ? Math.max(0, Math.min(1, patch.ballSmoothing))
+        : base.ballSmoothing,
     difficultyBias:
       typeof patch.difficultyBias === 'number' ? clamp01(patch.difficultyBias) : base.difficultyBias,
     allowLateJoin:

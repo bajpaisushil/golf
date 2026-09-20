@@ -80,15 +80,15 @@ export function Lighting({ theme, quality, level }: LightingProps): JSX.Element 
 
       {/* Ambient bounce: warm sky above, course-coloured light from below. */}
       <hemisphereLight
-        args={[colors.sky.getHex(), colors.rough.getHex(), intensity * 0.95]}
+        args={[colors.sky.getHex(), colors.rough.getHex(), intensity * 1.15]}
       />
 
       {/* Key. The only shadow caster, and only on the high tier. */}
       <directionalLight
         ref={keyRef}
         position={[-span * 0.45, span * 0.95, -span * 0.35]}
-        intensity={intensity * 1.35}
-        color={0xfff4e0}
+        intensity={intensity * 1.05}
+        color={0xfff6e8}
         castShadow={profile.shadows}
         shadow-mapSize-width={RENDER3D.SHADOW_MAP_SIZE}
         shadow-mapSize-height={RENDER3D.SHADOW_MAP_SIZE}

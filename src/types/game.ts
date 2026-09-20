@@ -345,6 +345,9 @@ export interface PlayerRoundResult {
   readonly totalScore: number;
   /** True when the player hit LIMITS.MAX_STROKES without holing out. */
   readonly dnf: boolean;
+  /** Ranking criteria, surfaced so a summary can show WHY a player placed here. */
+  readonly thinkTimeMs: number;
+  readonly penaltyStrokes: number;
 }
 
 /** Everything the round summary screen and ROUND_COMPLETED need. */
@@ -417,6 +420,14 @@ export interface GameSettings {
   readonly difficultyBias: number;
   /** Whether players may still join after the first round started. */
   readonly allowLateJoin: boolean;
+  /**
+   * Ball motion feel, 0 = most rigid, 1 = most volatile. Host-set, room-wide.
+   *
+   * Purely presentational: it damps the RENDERED position between simulated
+   * samples and can never change where a ball comes to rest, so it cannot give
+   * anybody an advantage. Players on weak devices may still override it locally.
+   */
+  readonly ballSmoothing: number;
 }
 
 /** The whole room, mirrored on every peer. The host's copy is authoritative. */

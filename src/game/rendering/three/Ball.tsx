@@ -66,6 +66,9 @@ function BallImpl({ view, quality, reducedMotion = false }: BallProps): JSX.Elem
   const profile = resolveQuality(quality);
   const registry = useBallRegistry();
   const groupRef = useRef<THREE.Group | null>(null);
+  /** The sphere alone. Rolling this instead of the group keeps the contact
+   *  shadow and the turn ring flat on the ground where they belong. */
+  const bodyRef = useRef<THREE.Mesh | null>(null);
 
   const radius = PHYSICS.BALL_RADIUS;
   const sphere = unitSphere(profile.circleSegments);
@@ -108,6 +111,9 @@ function BallImpl({ view, quality, reducedMotion = false }: BallProps): JSX.Elem
   useLayoutEffect(() => {
     const group = groupRef.current;
     if (registry === null || group === null) return;
+    // Publish the sphere alongside the group so the animator can ROLL the ball
+    // without tipping the contact shadow or the turn ring off the ground.
+    group.userData.body = bodyRef.current;
     registry.set(view.playerId, group);
     return () => {
       if (registry.get(view.playerId) === group) registry.delete(view.playerId);
@@ -195,6 +201,7 @@ function BallImpl({ view, quality, reducedMotion = false }: BallProps): JSX.Elem
     <>
       <group ref={groupRef} position={[view.pos.x, centreY, view.pos.y]}>
         <mesh
+          ref={bodyRef}
           geometry={sphere}
           material={materials.body}
           scale={bodyScale}

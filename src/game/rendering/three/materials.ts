@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 
 import type { Theme } from '@/game/levels/themes';
+import { RoundedBoxGeometry } from 'three-stdlib';
 
 /**
  * Presentation-only geometry constants, in course units unless noted.
@@ -67,8 +68,53 @@ export const RENDER3D = {
   /** Obstacle feedback. */
   PULSE_MS: 420,
   /** Aim indicator. */
-  AIM_MAX_LENGTH: 48,
+  /**
+   * How far the aim guide reaches, in course units, at full power.
+   *
+   * Deliberately SHORT. At 48 it spanned half a 64x96 course, so you could line
+   * the dots up with the cup and the ball simply went in — the guide was solving
+   * the hole instead of helping you aim. It now shows direction and a sense of
+   * strength; judging the distance is the player's job.
+   */
+  AIM_MAX_LENGTH: 17,
+  /**
+   * The guide is a FIXED length — it does not grow with power.
+   *
+   * Length was leaking distance: at full power the dots reached the cup, so you
+   * could line them up and the ball simply went in. Power now reads as COLOUR
+   * instead, which tells you how hard you are hitting without telling you how
+   * far the ball will travel. Judging distance is the skill.
+   */
+  AIM_FIXED_LENGTH: 13,
+  /** Power colour ramp: gentle -> firm -> full. */
+  AIM_COOL: '#4FC3F7',
+  AIM_WARM: '#FFD166',
+  AIM_HOT: '#FF4D4D',
   AIM_DOTS: 16,
+
+  // ---- feel knobs --------------------------------------------------------
+  // Tune these to taste; they are presentation only and never touch the
+  // simulation, so changing them can never desync players.
+
+  /**
+   * How much the ball rolls. 1 = physically accurate (the sphere turns exactly
+   * once per circumference travelled), 0 = it slides like a puck. The ball had
+   * no rotation at all before, which is why motion read as "not smooth".
+   */
+  BALL_ROLL: 1,
+  /**
+   * Position damping during playback. 0 = follow the simulated samples exactly
+   * (crispest, most accurate), 0.5 = noticeably floaty. Small values take the
+   * edge off sharp bounces without the ball lagging behind its own shadow.
+   */
+  BALL_SMOOTHING: 0.18,
+  /**
+   * How hard the ball shivers at full pull, in course units — the 8-ball-pool
+   * "loaded and ready" tell. 0 disables it.
+   */
+  AIM_CHARGE_SHAKE: 0.1,
+  /** Shiver frequency, Hz. */
+  AIM_CHARGE_SHAKE_HZ: 26,
   AIM_DOT_RADIUS: 0.5,
   AIM_DOT_LIFT: 0.06,
   AIM_GAP: 2.4,
@@ -107,7 +153,11 @@ export const RENDER3D = {
 // Shared geometry cache
 // ---------------------------------------------------------------------------
 
-let unitBoxGeometry: THREE.BoxGeometry | null = null;
+/** Corner softness of every block in the scene. Must stay below 0.5. */
+const BOX_BEVEL_RADIUS = 0.16;
+const BOX_BEVEL_SEGMENTS = 2;
+
+let unitBoxGeometry: THREE.BufferGeometry | null = null;
 const sphereCache = new Map<number, THREE.SphereGeometry>();
 const cylinderCache = new Map<number, THREE.CylinderGeometry>();
 const taperedCache = new Map<number, THREE.CylinderGeometry>();
@@ -119,8 +169,20 @@ let chevronGeometry: THREE.BufferGeometry | null = null;
 let flagGeometry: THREE.BufferGeometry | null = null;
 
 /** 1x1x1 box centred on its own origin. The workhorse of every instanced mesh. */
-export function unitBox(): THREE.BoxGeometry {
-  if (unitBoxGeometry === null) unitBoxGeometry = new THREE.BoxGeometry(1, 1, 1);
+/**
+ * The unit cube every block, wall and slab is scaled from — ROUNDED.
+ *
+ * Sharp box edges made the course read as hard plastic. A small bevel catches
+ * the light along every edge and the whole board turns soft and tactile, and it
+ * costs one shared geometry for the entire scene.
+ *
+ * The bevel is in unit space, so a long thin wall stretches it into a gentle
+ * capsule edge — which is exactly the look we want anyway.
+ */
+export function unitBox(): THREE.BufferGeometry {
+  if (unitBoxGeometry === null) {
+    unitBoxGeometry = new RoundedBoxGeometry(1, 1, 1, BOX_BEVEL_SEGMENTS, BOX_BEVEL_RADIUS);
+  }
   return unitBoxGeometry;
 }
 

@@ -25,6 +25,34 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
 import { SCORING, efficiencyPointsFor } from '@/game/config';
+import { criterionLabel, decidingCriterion } from '@/game/rules/scoring';
+
+/**
+ * Which tiebreak columns to show.
+ *
+ * Hits always. Time only if two players actually tied on hits, penalties only
+ * if they also tied on time. Showing a column that never had to be consulted is
+ * noise, and it implies the game was decided on something it was not.
+ */
+function columnsNeeded(results: readonly PlayerRoundResult[]): {
+  readonly time: boolean;
+  readonly penalties: boolean;
+} {
+  const live = results.filter((r) => !r.dnf);
+  let time = false;
+  let penalties = false;
+  for (let i = 0; i < live.length; i += 1) {
+    for (let j = i + 1; j < live.length; j += 1) {
+      const a = live[i]!;
+      const b = live[j]!;
+      if (a.strokes !== b.strokes) continue;
+      time = true;
+      if (a.thinkTimeMs === b.thinkTimeMs) penalties = true;
+    }
+  }
+  return { time, penalties };
+}
+import { formatDuration } from '@/utils/format';
 import { friendshipHeadline } from '@/game/rules/friendship';
 import { UI, withAlpha } from '@/game/rendering/palette';
 import type {
@@ -379,6 +407,9 @@ function BattleSummaryView(props: RoundSummaryProps): React.JSX.Element {
   const reduced = useReducedMotion() ?? false;
   const ranked = byRank(summary.results);
   const selfResult = summary.results.find((result) => result.playerId === selfId) ?? null;
+  /** More than one player on rank 1 — nobody "took" the round on their own. */
+  const sharedFirst = ranked.filter((result) => !result.dnf && result.rank === 1).length > 1;
+  const columns = columnsNeeded(summary.results);
   const roundHuman = summary.roundIndex + 1;
   const isLastRound = totalRounds !== null && roundHuman >= totalRounds;
   const advance = isLastRound && onFinish ? onFinish : onContinue;
@@ -396,10 +427,12 @@ function BattleSummaryView(props: RoundSummaryProps): React.JSX.Element {
           transition={{ type: 'spring', stiffness: 380, damping: 28 }}
           className="mt-2 text-[24px] font-bold leading-tight text-white"
         >
-          {selfResult && selfResult.rank === 1
-            ? 'You took the round \u{1F947}'
-            : selfResult && selfResult.dnf
-              ? 'Out of strokes this round'
+          {selfResult && selfResult.dnf
+            ? 'Out of hits this round'
+            : selfResult && selfResult.rank === 1
+              ? sharedFirst
+                ? 'Tied for the round \u{1F91D}'
+                : 'You took the round \u{1F947}'
               : 'Here is how it landed'}
         </motion.h2>
       </header>
@@ -411,6 +444,12 @@ function BattleSummaryView(props: RoundSummaryProps): React.JSX.Element {
         </h3>
         <ul className="flex flex-col gap-1.5">
           {ranked.map((result, index) => {
+            // What separated this player from the one below them, so the podium
+            // can explain itself instead of leaving ties looking arbitrary.
+            const below = ranked[index + 1] ?? null;
+            const decider =
+              below === null || result.dnf ? null : decidingCriterion(result, below);
+            const tiedWithNext = below !== null && below.rank === result.rank;
             const color = colorOf(players, result.playerId);
             const isSelf = result.playerId === selfId;
             const medal = result.dnf ? null : (MEDALS[result.rank - 1] ?? null);
@@ -492,6 +531,49 @@ function BattleSummaryView(props: RoundSummaryProps): React.JSX.Element {
                   {!result.dnf ? (
                     <span className="font-mono text-[10.5px] tabular-nums text-white/30">
                       {relativeToPar(result.strokes, result.par)}
+                    </span>
+                  ) : null}
+                </div>
+
+                {/*
+                  Every ranking criterion, spelled out. Without this a player who
+                  tied on hits has no way of knowing why they placed second.
+                */}
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[38px]">
+                  <span
+                    className="rounded-md bg-white/[0.04] px-1.5 py-[2px] font-mono text-[10px] tabular-nums text-white/40"
+                    title="Hits taken, penalties included"
+                  >
+                    {result.strokes} hits
+                  </span>
+                  {/* Only shown when hits alone did not settle it. */}
+                  {columns.time ? (
+                    <span
+                      className="rounded-md bg-white/[0.04] px-1.5 py-[2px] font-mono text-[10px] tabular-nums text-white/40"
+                      title="Time spent on your own turns — only consulted when hits are level"
+                    >
+                      {result.thinkTimeMs > 0 ? formatDuration(result.thinkTimeMs) : '—'} thinking
+                    </span>
+                  ) : null}
+                  {columns.penalties ? (
+                    <span
+                      className="rounded-md bg-white/[0.04] px-1.5 py-[2px] font-mono text-[10px] tabular-nums text-white/40"
+                      title="Penalty strokes from water"
+                    >
+                      {result.penaltyStrokes} penalties
+                    </span>
+                  ) : null}
+                  {tiedWithNext ? (
+                    <span className="rounded-md bg-white/[0.06] px-1.5 py-[2px] text-[10px] font-semibold text-white/50">
+                      tied
+                    </span>
+                  ) : decider !== null ? (
+                    <span
+                      className="rounded-md px-1.5 py-[2px] text-[10px] font-semibold"
+                      style={{ backgroundColor: withAlpha(UI.accent ?? '#FFC53D', 0.16), color: UI.accent ?? '#FFC53D' }}
+                      title="What separated this player from the one below"
+                    >
+                      {criterionLabel(decider)}
                     </span>
                   ) : null}
                 </div>

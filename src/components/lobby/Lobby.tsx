@@ -48,6 +48,9 @@ export interface LobbyProps {
   readonly onLeave: () => void;
   /** null when this client cannot change settings (guest, or the session has no setter). */
   readonly onChangeRounds: ((rounds: number | null) => void) | null;
+  /** 0 = most rigid, 1 = most volatile. null when this client cannot change it. */
+  readonly ballSmoothing: number;
+  readonly onChangeSmoothing: ((value: number) => void) | null;
 }
 
 const MODE_COPY: Readonly<Record<GameMode, { readonly title: string; readonly blurb: string }>> = {
@@ -65,6 +68,52 @@ const MODE_COPY: Readonly<Record<GameMode, { readonly title: string; readonly bl
   },
 };
 
+/**
+ * Ball feel, most rigid to most volatile.
+ *
+ * Deliberately shows NO number — it is a feel, not a statistic, and a number
+ * invites people to copy a "best" value that does not exist. It is presentation
+ * only: it damps the rendered position between simulated samples and can never
+ * change where a ball comes to rest, so it gives nobody an advantage.
+ */
+function SmoothnessSlider({
+  value,
+  onChange,
+}: {
+  readonly value: number;
+  readonly onChange: ((value: number) => void) | null;
+}): React.JSX.Element | null {
+  if (onChange === null) return null;
+  return (
+    <div className="mt-4">
+      <label
+        htmlFor="fg-smoothness"
+        className="mb-1.5 block text-[10.5px] font-bold uppercase tracking-[0.16em] text-white/[0.35]"
+      >
+        Ball feel
+      </label>
+      <input
+        id="fg-smoothness"
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={Math.round(Math.max(0, Math.min(1, value)) * 100)}
+        onChange={(event) => onChange(Number(event.target.value) / 100)}
+        className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-[#4FD1C5]"
+        aria-describedby="fg-smoothness-help"
+      />
+      <div className="mt-1 flex justify-between text-[10px] font-medium text-white/[0.35]">
+        <span>Most rigid</span>
+        <span>Most volatile</span>
+      </div>
+      <p id="fg-smoothness-help" className="mt-1 text-[10.5px] leading-snug text-white/[0.3]">
+        How the ball settles. Looks only — it never changes where the ball ends up.
+      </p>
+    </div>
+  );
+}
+
 /** The room before the first putt: code, people, settings, start. */
 export function Lobby({
   roomCode,
@@ -80,6 +129,8 @@ export function Lobby({
   onStart,
   onLeave,
   onChangeRounds,
+  ballSmoothing,
+  onChangeSmoothing,
 }: LobbyProps): React.JSX.Element {
   const [confirmLeave, setConfirmLeave] = useState(false);
   const copy = MODE_COPY[mode];
@@ -167,7 +218,10 @@ export function Lobby({
                   </span>
                 </div>
               ) : (
-                <RoundsSelector value={totalRounds} onChange={onChangeRounds} />
+                <>
+                  <RoundsSelector value={totalRounds} onChange={onChangeRounds} />
+                  <SmoothnessSlider value={ballSmoothing} onChange={onChangeSmoothing} />
+                </>
               )}
             </Card>
           </motion.section>

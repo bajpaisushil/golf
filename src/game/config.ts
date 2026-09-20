@@ -434,12 +434,16 @@ export const DEFAULT_QUALITY_TIER: QualityTier = 'medium';
 /** Round counts offered in the host UI. `null` = endless (co-op default). */
 export const ROUND_OPTIONS: readonly number[] = [3, 5, 10];
 
+/** Slider midpoint: a little damping, still crisp. 0 = rigid, 1 = volatile. */
+export const DEFAULT_BALL_SMOOTHING = 0.32;
+
 export const DEFAULT_SETTINGS: GameSettings = {
   totalRounds: null,
   maxStrokes: LIMITS.MAX_STROKES,
   rankBy: SCORING.rankBy,
   difficultyBias: 0,
   allowLateJoin: true,
+  ballSmoothing: DEFAULT_BALL_SMOOTHING,
 };
 
 /** Battle rooms default to 5 rounds; co-op rooms stay endless. */

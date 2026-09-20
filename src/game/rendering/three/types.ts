@@ -69,6 +69,11 @@ export interface CourseViewProps {
   readonly aim: AimPreview | null;
   readonly quality: QualityTier;
   readonly reducedMotion: boolean;
+  /**
+   * Ball motion feel, 0 = rigid, 1 = volatile. Set by the host for the room.
+   * Presentation only; it can never change where a ball comes to rest.
+   */
+  readonly smoothing?: number;
   readonly onPlaybackEnd?: () => void;
   readonly className?: string;
 

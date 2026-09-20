@@ -73,10 +73,19 @@ export function AimIndicator({ aim, quality }: AimIndicatorProps): JSX.Element |
   const aimX = aim.aim.x;
   const aimY = aim.aim.y;
 
-  /** Warm as the shot gets stronger, so power is legible without reading a meter. */
+  /**
+   * Power reads as COLOUR, cool -> warm -> hot, because the guide itself is a
+   * fixed length now. Blends through the player's own colour a touch at the
+   * gentle end so you can still tell whose aim it is.
+   */
   const hotHex = useMemo(() => {
-    const warm = mixHex(color, UI.warn, 0.55);
-    return mixHex(warm, UI.bad, Math.max(0, Math.min(1, power)) * 0.7);
+    const p = Math.max(0, Math.min(1, power));
+    const base =
+      p < 0.5
+        ? mixHex(RENDER3D.AIM_COOL, RENDER3D.AIM_WARM, p * 2)
+        : mixHex(RENDER3D.AIM_WARM, RENDER3D.AIM_HOT, (p - 0.5) * 2);
+    // A hint of the player's colour, strongest on soft taps.
+    return mixHex(base, color, 0.18 * (1 - p));
   }, [color, power]);
 
   const materials = useMemo(() => {
@@ -122,8 +131,9 @@ export function AimIndicator({ aim, quality }: AimIndicatorProps): JSX.Element |
     if (dots === null || !visible) return;
 
     const total = RENDER3D.AIM_DOTS;
-    const shown = Math.max(3, Math.round(power * total));
-    const reach = power * RENDER3D.AIM_MAX_LENGTH;
+    // Fixed dot count and fixed reach: the guide shows DIRECTION only.
+    const shown = total;
+    const reach = RENDER3D.AIM_FIXED_LENGTH;
     const start = PHYSICS.BALL_RADIUS + RENDER3D.AIM_GAP;
     const spacing = reach / shown;
 
@@ -213,7 +223,9 @@ export function AimIndicator({ aim, quality }: AimIndicatorProps): JSX.Element |
   useLayoutEffect(() => {
     const band = bandRef.current;
     if (band === null || !visible) return;
-    const length = power * PHYSICS.MAX_DRAG_CU * 0.55;
+    // Fixed too — an arrow that grew with power would give the distance away
+    // just as the dotted guide used to.
+    const length = RENDER3D.AIM_FIXED_LENGTH * 0.42;
     const yaw = Math.atan2(-aimY, aimX);
     band.position.set(
       origin.x - aimX * (length * 0.5 + PHYSICS.BALL_RADIUS),

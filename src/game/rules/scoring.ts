@@ -231,6 +231,8 @@ function buildResult(row: Row, rank: number, options: ScoreOptions): PlayerRound
     roundScore,
     totalScore: safeInt(row.entry.totalBefore, 0) + roundScore,
     dnf: row.dnf,
+    thinkTimeMs: row.thinkTime,
+    penaltyStrokes: row.penalties,
   };
 }
 
@@ -465,4 +467,53 @@ export function finalStandings(
     friendshipTier: state.mode === 'together' ? friendshipTierFor(Math.max(1, roundsPlayed)) : null,
     endedAt: options.endedAt ?? state.roundState?.startedAt ?? 0,
   };
+}
+
+
+/**
+ * Which criterion actually separated two adjacent results, or null if they tied.
+ *
+ * The summary uses this to explain a placing rather than leaving players to
+ * guess — "same hits, you were quicker" is a far better answer than silence.
+ */
+export function decidingCriterion(
+  better: PlayerRoundResult,
+  worse: PlayerRoundResult,
+): TiebreakCriterion | null {
+  if (better.dnf !== worse.dnf) return 'strokes';
+  for (const criterion of SCORING.tiebreakers) {
+    switch (criterion) {
+      case 'strokes':
+        if (better.strokes !== worse.strokes) return 'strokes';
+        break;
+      case 'thinkTime':
+        if (better.thinkTimeMs !== worse.thinkTimeMs) return 'thinkTime';
+        break;
+      case 'penalties':
+        if (better.penaltyStrokes !== worse.penaltyStrokes) return 'penalties';
+        break;
+      case 'holeOutOrder':
+        if (better.holeOutOrder !== worse.holeOutOrder) return 'holeOutOrder';
+        break;
+      default:
+        break;
+    }
+  }
+  return null;
+}
+
+/** Human label for a criterion, used in the round summary. */
+export function criterionLabel(criterion: TiebreakCriterion): string {
+  switch (criterion) {
+    case 'strokes':
+      return 'fewer hits';
+    case 'thinkTime':
+      return 'quicker';
+    case 'penalties':
+      return 'fewer penalties';
+    case 'holeOutOrder':
+      return 'holed out first';
+    default:
+      return '';
+  }
 }

@@ -197,9 +197,29 @@ function BallImpl({ view, quality, reducedMotion = false }: BallProps): JSX.Elem
   const centreY = view.holed ? radius - HOLED_SINK : radius;
   const bodyScale = view.holed ? radius * 0.82 : radius;
 
+  /**
+   * Position is applied HERE, not through a React `position` prop.
+   *
+   * ShotAnimator writes `group.position` directly every frame while a shot is in
+   * flight. If the position also came from a prop, any re-render during the shot
+   * — a peer message, a HUD tick — would make R3F slam the ball back to its last
+   * known STATE position mid-flight, which looked exactly like the ball
+   * replaying the previous hit.
+   *
+   * So while `userData.driven` is set, state updates leave the ball alone and
+   * the animator stays in charge.
+   */
+  useLayoutEffect(() => {
+    const group = groupRef.current;
+    if (group === null) return;
+    if (group.userData.driven === true) return;
+    group.position.set(view.pos.x, centreY, view.pos.y);
+  }, [view.pos.x, view.pos.y, centreY]);
+
+
   return (
     <>
-      <group ref={groupRef} position={[view.pos.x, centreY, view.pos.y]}>
+      <group ref={groupRef}>
         <mesh
           ref={bodyRef}
           geometry={sphere}

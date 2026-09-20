@@ -564,6 +564,12 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
           standings={game.mode === 'battle' ? standings : undefined}
           onContinue={onContinue}
           onFinish={onFinish}
+          ballSmoothing={game.settings.ballSmoothing}
+          onChangeSmoothing={
+            session.isHost
+              ? (value: number) => session.changeSettings({ ballSmoothing: value })
+              : null
+          }
         />
       </main>
     );

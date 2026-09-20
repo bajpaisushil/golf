@@ -1,4 +1,5 @@
 import { DEFAULT_TEAM_COUNT, autoAssignTeams, interleaveByTeam } from '@/game/rules/teams';
+import { feelPhysicsFor } from '@/game/config';
 /**
  * ROOM SESSION - the orchestrator that turns a pile of DataChannels into a game.
  *
@@ -789,7 +790,9 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
 
     // THE DETERMINISTIC REPLAY. Identical inputs, identical trajectory, on every
     // device - which is exactly why only the input crosses the wire.
-    const result = replayShot(level, shooter.currentPos, shot);
+    // Every peer simulates with the HOST's ball-feel value, which arrives in
+    // GameSettings. If a peer used its own, trajectories would diverge.
+    const result = replayShot(level, shooter.currentPos, shot, feelPhysicsFor(state.settings.ballSmoothing));
     emit({ type: 'shot-playback', playerId: shooter.id, result });
 
     if (isHostNow()) {

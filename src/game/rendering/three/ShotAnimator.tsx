@@ -112,9 +112,16 @@ export function ShotAnimator({
     const state = stateRef.current;
 
     if (state.playback !== playback) {
-      if (state.target !== null) state.target.scale.set(1, 1, 1);
+      if (state.target !== null) {
+        state.target.scale.set(1, 1, 1);
+        // Hand the ball back to state-driven positioning.
+        state.target.userData.driven = false;
+      }
       state.playback = playback;
       state.target = playback === null ? null : (registry?.get(playback.playerId) ?? null);
+      // Claim the ball for the duration of the shot so a re-render cannot yank
+      // it back to a stale position half way through.
+      if (state.target !== null) state.target.userData.driven = true;
       state.eventCursor = 0;
       state.ended = false;
       state.impactAt = 0;

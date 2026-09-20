@@ -57,7 +57,11 @@ export const PHYSICS: PhysicsConfig = {
   WALL_RESTITUTION: 0.88,
   BUMPER_RESTITUTION: 1.15,
   SAND_FRICTION_MULT: 3.6,
-  STOP_SPEED: 1.1,
+  // Low enough that a deliberate tap still rolls — a high cutoff here silently
+  // swallows gentle putts, because any shot launching slower than this stops on
+  // the first step. The long creep is dealt with by the SETTLE constants below,
+  // which ramp friction up as the ball slows, rather than by a hard cutoff.
+  STOP_SPEED: 1.6,
   // A faster ball would otherwise skate straight over the cup, which would make
   // the livelier physics feel punishing rather than fun.
   CAPTURE_SPEED: 34,
@@ -71,7 +75,11 @@ export const PHYSICS: PhysicsConfig = {
   // A gentle tap has to actually be gentle. At 0.05 with the livelier friction
   // the softest legal shot still carried 6.4 course units, while the cup is only
   // 2.2 across — so a ball sitting beside the hole could not be nudged in.
-  MIN_POWER: 0.015,
+  // Chosen against BOTH ends of the ball-feel slider: at this power the most
+  // RIGID setting still moves the ball ~0.3cu (never stuck), while the most
+  // VOLATILE setting travels ~1.0cu, comfortably inside the 2.2cu cup so a ball
+  // beside the hole can still be nudged in.
+  MIN_POWER: 0.08,
   /**
    * How responsive the very bottom of the drag is:
    *   speed = MAX_SHOT_SPEED * power * (POWER_TOE + (1 - POWER_TOE) * power)
@@ -122,9 +130,12 @@ export const LEVEL: LevelConfig = {
   DEFAULT_WIDTH: 64,
   DEFAULT_HEIGHT: 96,
   HOLE_RADIUS: 2.2,
-  MIN_OBSTACLES: 3,
-  MAX_OBSTACLES: 14,
-  DIFFICULTY_RAMP: 0.75,
+  // Round 1 with two obstacles is a straight line to the cup. Start with a real
+  // hole and climb faster, or the game peaks in difficulty long after people
+  // have stopped playing.
+  MIN_OBSTACLES: 5,
+  MAX_OBSTACLES: 18,
+  DIFFICULTY_RAMP: 1.15,
   WALL_MARGIN: 2,
   SPAWN_CLEAR_RADIUS: 7,
   HOLE_CLEAR_RADIUS: 5,
@@ -467,6 +478,44 @@ export const BALL_FEEL = {
   MOST_VOLATILE: 0.72,
   DEFAULT: 0.32,
 } as const;
+
+/**
+ * The two ends of the slider AS PHYSICS.
+ *
+ * The slider is not just a visual smoother — it changes how the ball behaves.
+ * Both ends must remain playable, so these are chosen to satisfy three rules:
+ *
+ *   1. at 100% force, EITHER end must carry the ball the full length of the
+ *      course, however long the course is;
+ *   2. at 100% force on MOST VOLATILE the ball must keep working the walls
+ *      rather than dying on the first rail;
+ *   3. at the very lowest force, MOST RIGID must still move the ball a little —
+ *      "rigid" means it settles quickly, never that it is stuck.
+ *
+ * `travel.test.ts` asserts all three, so retuning here cannot quietly break the
+ * game. Because trajectories must be identical on every peer, the chosen value
+ * travels in GameSettings and every peer simulates with the HOST's number.
+ */
+export const FEEL_PHYSICS = {
+  /** Settles quickly, deadened rails. */
+  RIGID: { friction: 1.35, restitution: 0.62 },
+  /** Keeps rolling, lively rails. */
+  VOLATILE: { friction: 0.42, restitution: 0.95 },
+} as const;
+
+/** Physics for a 0..1 slider position. Linear blend; only * and + so it stays deterministic. */
+export function feelPhysicsFor(position: number): {
+  readonly friction: number;
+  readonly restitution: number;
+} {
+  const p = Math.max(0, Math.min(1, Number.isFinite(position) ? position : 0.5));
+  const a = FEEL_PHYSICS.RIGID;
+  const b = FEEL_PHYSICS.VOLATILE;
+  return {
+    friction: a.friction + (b.friction - a.friction) * p,
+    restitution: a.restitution + (b.restitution - a.restitution) * p,
+  };
+}
 
 /** Maps a 0..1 slider position onto the damping the renderer uses. */
 export function ballFeelFromSlider(position: number): number {

@@ -26,6 +26,8 @@ import { motion, useReducedMotion } from 'framer-motion';
 
 import { SCORING, efficiencyPointsFor } from '@/game/config';
 import { criterionLabel, decidingCriterion } from '@/game/rules/scoring';
+import { BallFeelSlider } from './BallFeelSlider';
+import { DEFAULT_BALL_SMOOTHING } from '@/game/config';
 
 /**
  * Which tiebreak columns to show.
@@ -85,6 +87,9 @@ export interface RoundSummaryProps {
   readonly standings?: readonly FinalStanding[];
   /** Host action: start the next round. */
   readonly onContinue: () => void;
+  /** Host-only, between rounds: retune ball feel for the rounds still to come. */
+  readonly ballSmoothing?: number;
+  readonly onChangeSmoothing?: ((value: number) => void) | null;
   /** Host action when this was the final round; falls back to onContinue. */
   readonly onFinish?: () => void;
   readonly className?: string;
@@ -380,6 +385,17 @@ function TogetherSummary(props: RoundSummaryProps): React.JSX.Element {
         </motion.section>
       ) : null}
 
+      {/* Between rounds is the natural moment to retune the feel, so the host
+          is not stuck with whatever they picked before the first putt. */}
+      {props.isHost && props.onChangeSmoothing ? (
+        <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3 pb-3">
+          <BallFeelSlider
+            value={props.ballSmoothing ?? DEFAULT_BALL_SMOOTHING}
+            onChange={props.onChangeSmoothing}
+          />
+        </div>
+      ) : null}
+
       <div className="mt-5">
         <AdvanceButton
           isHost={isHost}
@@ -603,6 +619,17 @@ function BattleSummaryView(props: RoundSummaryProps): React.JSX.Element {
             selfId={selfId}
             mode="battle"
             title="Total"
+          />
+        </div>
+      ) : null}
+
+      {/* Between rounds is the natural moment to retune the feel, so the host
+          is not stuck with whatever they picked before the first putt. */}
+      {props.isHost && props.onChangeSmoothing ? (
+        <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-3 pb-3">
+          <BallFeelSlider
+            value={props.ballSmoothing ?? DEFAULT_BALL_SMOOTHING}
+            onChange={props.onChangeSmoothing}
           />
         </div>
       ) : null}

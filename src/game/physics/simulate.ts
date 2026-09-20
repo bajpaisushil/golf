@@ -47,9 +47,9 @@ export const HOLE_PULL_ACCEL = 38;
 /** Below CAPTURE_SPEED * this, the magnet is active. Fast balls just lip out. */
 export const HOLE_PULL_SPEED_MULT = 1.6;
 /** Below STOP_SPEED * this, friction ramps up so the ball SETTLES instead of creeping. */
-export const SETTLE_SPEED_MULT = 3.5;
+export const SETTLE_SPEED_MULT = 6;
 /** Extra friction applied inside the settle band. */
-export const SETTLE_FRICTION_MULT = 2.2;
+export const SETTLE_FRICTION_MULT = 5.5;
 /** Hard ceiling on speed (x MAX_SHOT_SPEED) so chained bumpers can never tunnel a wall. */
 export const MAX_SPEED_MULT = 1.35;
 /** Trajectory events are presentation sugar; cap them so a pinball level stays cheap. */
@@ -62,6 +62,15 @@ export interface SimOptions {
   readonly sampleEvery?: number;
   /** Default true. Set false in hot loops (drift repair) where events are ignored. */
   readonly collectEvents?: boolean;
+  /**
+   * Rolling resistance. Default `PHYSICS.FRICTION`. Supplied per-room from the
+   * host's ball-feel setting; MUST be identical on every peer or trajectories
+   * diverge, which is why it travels in GameSettings rather than being a local
+   * preference.
+   */
+  readonly friction?: number;
+  /** Wall bounciness. Default `PHYSICS.WALL_RESTITUTION`. Same sync rule. */
+  readonly restitution?: number;
 }
 
 /** One raw integrator step. Only produced by {@link simulateShotSteps} (tests/tools). */
@@ -149,6 +158,16 @@ function run(
   const rawSample =
     options !== undefined && options.sampleEvery !== undefined ? Math.floor(options.sampleEvery) : PHYSICS.PATH_SAMPLE_EVERY;
   const collectEvents = options === undefined || options.collectEvents !== false;
+  // Per-room feel. Defaults keep every existing call site behaving exactly as
+  // before; the room session supplies the host's values so all peers agree.
+  const baseFriction =
+    options !== undefined && options.friction !== undefined && options.friction > 0
+      ? options.friction
+      : PHYSICS.FRICTION;
+  const wallRestitution =
+    options !== undefined && options.restitution !== undefined && options.restitution > 0
+      ? options.restitution
+      : PHYSICS.WALL_RESTITUTION;
   const maxSteps = Math.floor(maxSeconds / dt);
   const maxSamples = Math.max(8, Math.floor(PHYSICS.MAX_PATH_SAMPLES));
   const speedCap = PHYSICS.MAX_SHOT_SPEED * MAX_SPEED_MULT;
@@ -247,7 +266,7 @@ function run(
     }
 
     // --- 2. friction (sand aware, with a settle ramp) ---------------------
-    let friction = PHYSICS.FRICTION;
+    let friction = baseFriction;
     let inSand = false;
     for (let i = 0; i < sands.length; i += 1) {
       const sand = sands[i];
@@ -292,29 +311,29 @@ function run(
 
     // --- 4. outer walls ----------------------------------------------------
     if (px < radius) {
-      px = radius + (radius - px) * PHYSICS.WALL_RESTITUTION;
-      const hit = bounceVelocity(vx, vy, { x: 1, y: 0 }, PHYSICS.WALL_RESTITUTION);
+      px = radius + (radius - px) * wallRestitution;
+      const hit = bounceVelocity(vx, vy, { x: 1, y: 0 }, wallRestitution);
       pushEvent(t, 'wall', px, py, Math.abs(vx));
       vx = hit.x;
       vy = hit.y;
     } else if (px > level.width - radius) {
       const limit = level.width - radius;
-      px = limit - (px - limit) * PHYSICS.WALL_RESTITUTION;
-      const hit = bounceVelocity(vx, vy, { x: -1, y: 0 }, PHYSICS.WALL_RESTITUTION);
+      px = limit - (px - limit) * wallRestitution;
+      const hit = bounceVelocity(vx, vy, { x: -1, y: 0 }, wallRestitution);
       pushEvent(t, 'wall', px, py, Math.abs(vx));
       vx = hit.x;
       vy = hit.y;
     }
     if (py < radius) {
-      py = radius + (radius - py) * PHYSICS.WALL_RESTITUTION;
-      const hit = bounceVelocity(vx, vy, { x: 0, y: 1 }, PHYSICS.WALL_RESTITUTION);
+      py = radius + (radius - py) * wallRestitution;
+      const hit = bounceVelocity(vx, vy, { x: 0, y: 1 }, wallRestitution);
       pushEvent(t, 'wall', px, py, Math.abs(vy));
       vx = hit.x;
       vy = hit.y;
     } else if (py > level.height - radius) {
       const limit = level.height - radius;
-      py = limit - (py - limit) * PHYSICS.WALL_RESTITUTION;
-      const hit = bounceVelocity(vx, vy, { x: 0, y: -1 }, PHYSICS.WALL_RESTITUTION);
+      py = limit - (py - limit) * wallRestitution;
+      const hit = bounceVelocity(vx, vy, { x: 0, y: -1 }, wallRestitution);
       pushEvent(t, 'wall', px, py, Math.abs(vy));
       vx = hit.x;
       vy = hit.y;
@@ -329,7 +348,7 @@ function run(
       px += contact.normal.x * contact.penetration;
       py += contact.normal.y * contact.penetration;
       const impact = Math.sqrt(vx * vx + vy * vy);
-      const restitution = wall.restitution === undefined ? PHYSICS.WALL_RESTITUTION : wall.restitution;
+      const restitution = wall.restitution === undefined ? wallRestitution : wall.restitution;
       const hit = bounceVelocity(vx, vy, contact.normal, restitution);
       vx = hit.x;
       vy = hit.y;

@@ -3,6 +3,8 @@
 Multiplayer mini golf you play with friends in a browser. Open the site, pick a mode, share a
 six-character room code, putt. No account, no install, no server.
 
+**Play it: https://golf-flax-six.vercel.app**
+
 Gameplay traffic is **peer-to-peer over WebRTC DataChannels**. There is no backend, no database and no
 game server — the whole app is static files.
 
@@ -48,9 +50,15 @@ signalling relays instead of `BroadcastChannel`.
 npm run build && npm run serve:static      # in one terminal
 node e2e/play.mjs                          # two tabs create + join a room
 node e2e/shot.mjs                          # putts, asserts the stroke syncs to the peer
+node e2e/drag.mjs                          # drags from mid-course, checks aim feedback + shot
+URL=https://golf-flax-six.vercel.app node e2e/live.mjs
 ```
 
-Both drive real Chromium via Playwright and screenshot each stage.
+All drive real Chromium via Playwright and screenshot each stage.
+
+`live.mjs` is the important one: it uses two **separate browser profiles**, which do not share a
+`BroadcastChannel`, so the handshake is forced through the public Nostr relays — the same path two
+people on different devices take. Last run connected in ~13s and synced a putt between peers.
 
 ---
 

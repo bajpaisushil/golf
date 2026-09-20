@@ -44,7 +44,34 @@ export const TEAM_IDS: readonly TeamId[] = ['A', 'B', 'C', 'D'];
 export type GameStatus = 'lobby' | 'playing' | 'round-summary' | 'finished';
 
 /** How a competitive round is ranked. Configured once in `src/game/config.ts`. */
-export type RankBy = 'strokes-then-time' | 'time';
+/**
+ * How a competitive round is ranked.
+ *
+ * 'strokes'            fewest hits wins; EQUAL HITS TIE (the default).
+ * 'strokes-then-time'  fewest hits, ties broken by who holed out first.
+ * 'time'               who holed out first, ties broken by hits.
+ *
+ * Note that 'strokes-then-time' is unfair in turn-based play: player 1 always
+ * shoots before player 2, so on equal hits the earlier joiner always holes out
+ * first and always wins the tie. Kept for rooms that want it, but not default.
+ */
+export type RankBy = 'strokes' | 'strokes-then-time' | 'time';
+
+/**
+ * One link in the tiebreak chain. Every criterion is "lower is better".
+ *
+ *  'strokes'      hits taken, penalties included. Always the primary.
+ *  'thinkTime'    total wall-clock spent on YOUR OWN turns. The fair timing
+ *                 measure: it says who played more decisively, and unlike
+ *                 hole-out order it does not depend on where you sit in the
+ *                 rotation.
+ *  'penalties'    penalty strokes (water). Rewards the cleaner round.
+ *  'holeOutOrder' who dropped first. HONEST WARNING: in turn-based play this is
+ *                 really turn position — player 1 shoots before player 2 every
+ *                 rotation, so on equal hits the earlier joiner always wins.
+ *                 Offered for rooms that want it, never in the default chain.
+ */
+export type TiebreakCriterion = 'strokes' | 'thinkTime' | 'penalties' | 'holeOutOrder';
 
 // ---------------------------------------------------------------------------
 // Level geometry
@@ -233,6 +260,14 @@ export interface PlayerState {
   readonly levelSeedVariant: number;
   /** Team play only: which team this player putts for. null in the other modes. */
   readonly teamId: TeamId | null;
+  /**
+   * Total milliseconds this player spent on their own turns this round.
+   * Measured from the moment the turn was handed to them until their shot
+   * resolved, so it reflects deliberation only — never other people's turns.
+   */
+  readonly thinkTimeMs: number;
+  /** Penalty strokes taken this round (water). Included in `strokes`. */
+  readonly penaltyStrokes: number;
 }
 
 // ---------------------------------------------------------------------------

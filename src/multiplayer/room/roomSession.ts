@@ -350,6 +350,8 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
   let welcomed = options.isHost;
   /** Heartbeats spent waiting for a WELCOME that never came. */
   let unwelcomedTicks = 0;
+  /** playerId -> when the turn was handed to them. Host-side only. */
+  const turnStartedAt = new Map<PlayerId, Timestamp>();
 
   let unsubMessages: Unsubscribe | null = null;
   let unsubPeers: Unsubscribe | null = null;
@@ -486,6 +488,8 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
       roundWins: 0,
       levelSeedVariant: 0,
       teamId: null,
+      thinkTimeMs: 0,
+      penaltyStrokes: 0,
     };
     return { ...draft, levelSeedVariant: variantIndexFor(draft, state.mode) };
   }
@@ -694,6 +698,13 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
     if (round === null) return;
 
     const strokesAfter = shooter.strokes + 1 + result.penaltyStrokes;
+
+    // Deliberation time: from the moment this player was handed the turn until
+    // their shot resolved. Deliberately NOT wall-clock since the round began —
+    // that would just measure how far down the rotation you sit.
+    const startedAt = turnStartedAt.get(shooter.id);
+    const spent = startedAt === undefined ? 0 : Math.max(0, now() - startedAt);
+    turnStartedAt.delete(shooter.id);
     const holeOutOrder = result.holed ? round.holeOutCounter + 1 : null;
 
     const draft = sequencer.stamp<'SHOT_RESOLVED'>({
@@ -705,6 +716,8 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
       holed: result.holed,
       penaltyStrokes: result.penaltyStrokes,
       strokesAfter,
+      thinkTimeMsAfter: shooter.thinkTimeMs + spent,
+      penaltyStrokesAfter: shooter.penaltyStrokes + result.penaltyStrokes,
       nextPlayerId: null,
     });
 
@@ -715,7 +728,11 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
     {
       const provisional = gameReducer(state, { type: 'net', message: draft, now: now() });
       const upNext = nextTurn(provisional);
-      if (upNext !== null) resolved = { ...draft, nextPlayerId: upNext };
+      if (upNext !== null) {
+        resolved = { ...draft, nextPlayerId: upNext };
+        // Their clock starts the instant the turn is theirs.
+        turnStartedAt.set(upNext, now());
+      }
     }
 
     transport.broadcast(resolved);
@@ -808,8 +825,12 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
       state.mode === 'teams'
         ? interleaveByTeam(players, assigned)
         : players.map((player) => player.id);
+
+    // Fresh round, fresh clocks. The first player's deliberation starts now.
+    turnStartedAt.clear();
     // Both modes take turns, so both need a first player.
     const first = turnOrder[0] ?? null;
+    if (first !== null) turnStartedAt.set(first, now());
 
     appliedShots.clear();
     hostEmit<'ROUND_STARTED'>({

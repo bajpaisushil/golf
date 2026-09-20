@@ -6,7 +6,7 @@
  * you touch them, otherwise two peers on different builds will desync.
  */
 
-import type { GameSettings, RankBy } from '@/types';
+import type { GameSettings, RankBy, TiebreakCriterion } from '@/types';
 import type { Hex, QualityTier } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -218,6 +218,7 @@ export interface ScoringConfig {
    * 'time'             - pure race: first to hole out wins regardless of strokes.
    */
   readonly rankBy: RankBy;
+  readonly tiebreakers: readonly TiebreakCriterion[];
   /** Awarded to a player who hit MAX_STROKES without holing out. */
   readonly dnfPoints: number;
 }
@@ -247,7 +248,21 @@ export const SCORING: ScoringConfig = {
     min: 1,
     underParBonus: 3,
   },
-  rankBy: 'strokes-then-time',
+  // Equal hits tie. Anything that falls back to hole-out order hands the player
+  // who shoots first a permanent advantage now that battle is turn-based.
+  rankBy: 'strokes',
+  /**
+   * Tiebreak chain, applied in order, each one "lower is better".
+   *
+   * Hits decide it first. Equal hits fall to THINK TIME — wall-clock spent on
+   * your own turns — which rewards playing decisively and, unlike hole-out
+   * order, does not depend on whether you shoot first in the rotation. Fewest
+   * penalties settles anything still level. Players equal on all three are
+   * genuinely tied and share the placement points.
+   *
+   * Reorder or shorten this to taste; an empty array means "hits only, then tie".
+   */
+  tiebreakers: ['strokes', 'thinkTime', 'penalties'],
   dnfPoints: 0,
 };
 

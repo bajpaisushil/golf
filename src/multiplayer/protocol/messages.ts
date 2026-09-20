@@ -141,6 +141,9 @@ export interface ShotResolvedMessage extends NetMessageBase {
   readonly penaltyStrokes: number;
   /** Authoritative stroke count for this player after the shot (penalties included). */
   readonly strokesAfter: number;
+  /** Absolute totals after this shot — same drift-repair rule as strokesAfter. */
+  readonly thinkTimeMsAfter: number;
+  readonly penaltyStrokesAfter: number;
   /** 'together' mode: whose turn it is now. null in 'battle' or when the round ended. */
   readonly nextPlayerId: PlayerId | null;
 }
@@ -412,6 +415,8 @@ const PAYLOAD_VALIDATORS: Readonly<Record<NetMessageType, PayloadValidator>> = {
     isBool(m.holed) &&
     isInt(m.penaltyStrokes) &&
     isInt(m.strokesAfter) &&
+    isNum(m.thinkTimeMsAfter) &&
+    isInt(m.penaltyStrokesAfter) &&
     isNullOr(m.nextPlayerId, isStr),
   PLAYER_REACHED_GOAL: (m) =>
     isStr(m.playerId) && isInt(m.roundIndex) && isInt(m.strokes) && isInt(m.holeOutOrder),

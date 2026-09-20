@@ -29,6 +29,7 @@ import {
   placementPointsFor,
 } from '@/game/config';
 import type {
+  TiebreakCriterion,
   FinalStanding,
   GameEndReason,
   GameMode,
@@ -62,6 +63,10 @@ export interface RoundEntry {
   readonly holeOutOrder: number | null;
   /** Points this player had BEFORE this round (used to build `totalScore`). */
   readonly totalBefore: number;
+  /** Wall-clock spent on this player's own turns. Used as the timing tiebreak. */
+  readonly thinkTimeMs?: number;
+  /** Penalty strokes taken this round. Used as the final tiebreak. */
+  readonly penaltyStrokes?: number;
 }
 
 export interface ScoreOptions {
@@ -118,6 +123,10 @@ interface Row {
   /** Only a holed-out, non-DNF player earns points. */
   readonly scorable: boolean;
   readonly order: number;
+  /** Wall-clock spent on this player's own turns. Lower is better. */
+  readonly thinkTime: number;
+  /** Penalty strokes taken. Lower is better. */
+  readonly penalties: number;
 }
 
 /** Sentinel used so "never holed out" always sorts after every real finish. */
@@ -131,7 +140,41 @@ function toRow(entry: RoundEntry, maxStrokes: number): Row {
     entry.holeOutOrder === null || !Number.isFinite(entry.holeOutOrder)
       ? NEVER_HOLED
       : Math.floor(entry.holeOutOrder);
-  return { entry, strokes, par, dnf, scorable: entry.holed && !dnf, order };
+  return {
+    entry,
+    strokes,
+    par,
+    dnf,
+    scorable: entry.holed && !dnf,
+    order,
+    thinkTime: Math.max(0, safeInt(entry.thinkTimeMs ?? 0, 0)),
+    penalties: Math.max(0, safeInt(entry.penaltyStrokes ?? 0, 0)),
+  };
+}
+
+/** Every criterion is "lower is better", so the chain is a plain subtraction. */
+function criterionOf(row: Row, criterion: TiebreakCriterion): number {
+  switch (criterion) {
+    case 'strokes':
+      return row.strokes;
+    case 'thinkTime':
+      return row.thinkTime;
+    case 'penalties':
+      return row.penalties;
+    case 'holeOutOrder':
+      return row.order;
+    default:
+      return 0;
+  }
+}
+
+/** Walks SCORING.tiebreakers in order; 0 means genuinely tied. */
+function compareChain(a: Row, b: Row): number {
+  for (const criterion of SCORING.tiebreakers) {
+    const delta = criterionOf(a, criterion) - criterionOf(b, criterion);
+    if (delta !== 0) return delta;
+  }
+  return 0;
 }
 
 function compareRows(a: Row, b: Row, rankBy: RankBy): number {
@@ -141,6 +184,12 @@ function compareRows(a: Row, b: Row, rankBy: RankBy): number {
     if (rankBy === 'time') {
       if (a.order !== b.order) return a.order - b.order;
       if (a.strokes !== b.strokes) return a.strokes - b.strokes;
+    } else if (rankBy === 'strokes') {
+      // Hits first, then the configured chain (think time, then penalties).
+      // Players level on every criterion are genuinely TIED; the id comparison
+      // below only keeps the array order identical on every peer.
+      const chained = compareChain(a, b);
+      if (chained !== 0) return chained;
     } else {
       if (a.strokes !== b.strokes) return a.strokes - b.strokes;
       if (a.order !== b.order) return a.order - b.order;
@@ -156,6 +205,7 @@ function sharesRank(a: Row, b: Row, rankBy: RankBy): boolean {
   if (a.dnf || b.dnf) return a.dnf && b.dnf;
   if (a.entry.holed !== b.entry.holed) return false;
   if (rankBy === 'time') return a.order === b.order && a.strokes === b.strokes;
+  if (rankBy === 'strokes') return compareChain(a, b) === 0;
   return a.strokes === b.strokes && a.order === b.order;
 }
 
@@ -282,6 +332,8 @@ export function summariseRound(state: GameState, roundIndex: number): RoundSumma
     holed: player.holed,
     holeOutOrder: player.holeOutOrder,
     totalBefore: alreadyApplied ? player.totalScore - player.roundScore : player.totalScore,
+    thinkTimeMs: player.thinkTimeMs,
+    penaltyStrokes: player.penaltyStrokes,
   }));
 
   const results = rankRound(entries, {

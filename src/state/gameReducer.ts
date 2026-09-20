@@ -271,6 +271,8 @@ function resetPlayersForRound(
       levelSeedVariant: variantById.get(player.id) ?? player.levelSeedVariant,
       // Teams persist across rounds; a round reset must not dissolve them.
       teamId: teamById.get(player.id) ?? player.teamId,
+      thinkTimeMs: 0,
+      penaltyStrokes: 0,
     };
   }
   return next;
@@ -303,6 +305,8 @@ export function createInitialState(args: {
     roundWins: 0,
     levelSeedVariant: 0,
     teamId: null,
+    thinkTimeMs: 0,
+    penaltyStrokes: 0,
   };
 
   return {
@@ -416,6 +420,9 @@ function upsertPlayer(state: GameState, incoming: PlayerState): GameState {
     levelSeedVariant: Math.max(0, safeInt(incoming.levelSeedVariant, 0)),
     // Team comes off the wire: the host assigns it, peers must not invent one.
     teamId: incoming.teamId ?? null,
+    // These come off the wire too — the host measures them, peers mirror them.
+    thinkTimeMs: Math.max(0, safeInt(incoming.thinkTimeMs, 0)),
+    penaltyStrokes: Math.max(0, safeInt(incoming.penaltyStrokes, 0)),
   };
   const players = withPlayer(state.players, sanitised);
   return ensureTurn({ ...state, players, playerOrder: orderOf(players) });
@@ -445,6 +452,9 @@ interface ShotOutcome {
   readonly strokes: number;
   readonly holed: boolean;
   readonly holeOutOrder: number | null;
+  /** Absolute totals from the host. Omitted by local actions, which never move them. */
+  readonly thinkTimeMs?: number;
+  readonly penaltyStrokes?: number;
 }
 
 /**
@@ -481,6 +491,8 @@ function applyShotOutcome(state: GameState, outcome: ShotOutcome): GameState {
     ...player,
     currentPos: safeVec(outcome.restPos, player.currentPos),
     strokes,
+    thinkTimeMs: outcome.thinkTimeMs ?? player.thinkTimeMs,
+    penaltyStrokes: outcome.penaltyStrokes ?? player.penaltyStrokes,
     holed: outcome.holed,
     holeOutOrder: outcome.holed ? holeOutOrder : null,
   };
@@ -514,6 +526,10 @@ function applyShotOutcome(state: GameState, outcome: ShotOutcome): GameState {
         ...p,
         // Only the shooter's stroke count moves.
         strokes: id === outcome.playerId ? strokes : p.strokes,
+        thinkTimeMs:
+          id === outcome.playerId ? (outcome.thinkTimeMs ?? p.thinkTimeMs) : p.thinkTimeMs,
+        penaltyStrokes:
+          id === outcome.playerId ? (outcome.penaltyStrokes ?? p.penaltyStrokes) : p.penaltyStrokes,
         currentPos: ball,
         holed: holedNow,
         holeOutOrder: holedNow ? (p.holeOutOrder ?? Math.max(1, round.holeOutCounter + 1)) : null,
@@ -584,6 +600,8 @@ function handleNet(state: GameState, message: NetMessage): GameState {
         strokes: message.strokesAfter,
         holed: message.holed,
         holeOutOrder: null,
+        thinkTimeMs: message.thinkTimeMsAfter,
+        penaltyStrokes: message.penaltyStrokesAfter,
       });
 
       const round = applied.roundState;

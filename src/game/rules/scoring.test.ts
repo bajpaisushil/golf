@@ -72,17 +72,47 @@ describe('placement points', () => {
 });
 
 describe('rankRound (battle)', () => {
-  it('ranks by fewest strokes, then by who holed out first', () => {
+  it('ranks by fewest strokes, and EQUAL HITS TIE', () => {
     const results = rankRound(
       [entry('a', 5, 1), entry('b', 3, 3), entry('c', 3, 2), entry('d', 7, 4)],
       opts(4),
     );
     const byId = new Map(results.map((r) => [r.playerId, r]));
-    // c and b both took 3; c holed out earlier so c wins.
+
+    // b and c both took 3 hits and spent no measured time, so they TIE for 1st.
+    // Breaking that tie on hole-out order would be unfair: play is turn-based,
+    // so whoever shoots first in the rotation would always "finish first".
+    expect(byId.get(pid('b'))?.rank).toBe(1);
     expect(byId.get(pid('c'))?.rank).toBe(1);
-    expect(byId.get(pid('b'))?.rank).toBe(2);
+    // Standard competition ranking: the next player is 3rd, not 2nd.
     expect(byId.get(pid('a'))?.rank).toBe(3);
     expect(byId.get(pid('d'))?.rank).toBe(4);
+  });
+
+  it('tied players are awarded the same points', () => {
+    const results = rankRound([entry('b', 3, 2), entry('c', 3, 1)], opts(2));
+    const [first, second] = results;
+    expect(first?.rank).toBe(second?.rank);
+    expect(roundPointsFor(first!)).toBe(roundPointsFor(second!));
+  });
+
+  it('breaks a hit tie on think time before anything else', () => {
+    const quick = { ...entry('quick', 3, 2), thinkTimeMs: 4_000 };
+    const slow = { ...entry('slow', 3, 1), thinkTimeMs: 30_000 };
+    const results = rankRound([slow, quick], opts(2));
+    const byId = new Map(results.map((r) => [r.playerId, r]));
+    // `slow` holed out first, but think time is the tiebreak, not turn order.
+    expect(byId.get(pid('quick'))?.rank).toBe(1);
+    expect(byId.get(pid('slow'))?.rank).toBe(2);
+  });
+
+  it('falls to fewest penalties when hits and think time are level', () => {
+    const clean = { ...entry('clean', 4, 2), thinkTimeMs: 5_000, penaltyStrokes: 0 };
+    const wet = { ...entry('wet', 4, 1), thinkTimeMs: 5_000, penaltyStrokes: 2 };
+    const results = rankRound([wet, clean], opts(2));
+    const byId = new Map(results.map((r) => [r.playerId, r]));
+    expect(byId.get(pid('clean'))?.rank).toBe(1);
+    expect(byId.get(pid('wet'))?.rank).toBe(2);
   });
 
   it('awards more total points for fewer hits', () => {

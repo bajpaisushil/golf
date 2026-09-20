@@ -242,15 +242,20 @@ function roundSnapshotOf(round: RoundState, players: readonly PlayerState[]): Ro
       variants: players.map((player) => ({ playerId: player.id, variantIndex: 0 })),
       holeOutCounter: round.holeOutCounter,
       completed: round.completed,
+      // The shared ball is group state, so it has to travel with the snapshot;
+      // without it a late joiner would rebuild the round with the ball on the tee.
+      ball: round.ball,
+      ballHoled: round.ballHoled,
     };
   }
   return {
     mode: 'battle',
     roundIndex: round.roundIndex,
     startedAt: round.startedAt,
-    turnOrder: players.map((player) => player.id),
-    turnCursor: 0,
-    activePlayerId: null,
+    // Battle takes turns now, so its real rotation must travel too.
+    turnOrder: round.turnOrder.length > 0 ? round.turnOrder : players.map((player) => player.id),
+    turnCursor: round.turnCursor,
+    activePlayerId: round.activePlayerId,
     variants: players.map((player) => ({
       playerId: player.id,
       variantIndex: player.levelSeedVariant,
@@ -689,8 +694,11 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
       nextPlayerId: null,
     });
 
+    // Hand the turn on in BOTH modes. Simulating the shot first means the next
+    // player is chosen from post-shot eligibility, so someone who just holed out
+    // is skipped rather than being handed a turn they cannot take.
     let resolved = draft;
-    if (state.mode === 'together') {
+    {
       const provisional = gameReducer(state, { type: 'net', message: draft, now: now() });
       const upNext = nextTurn(provisional);
       if (upNext !== null) resolved = { ...draft, nextPlayerId: upNext };
@@ -774,7 +782,8 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
   function startRound(roundIndex: number): void {
     const players = playersOf(state).filter((player) => player.connected);
     const turnOrder = players.map((player) => player.id);
-    const first = state.mode === 'together' ? (turnOrder[0] ?? null) : null;
+    // Both modes take turns, so both need a first player.
+    const first = turnOrder[0] ?? null;
 
     appliedShots.clear();
     hostEmit<'ROUND_STARTED'>({

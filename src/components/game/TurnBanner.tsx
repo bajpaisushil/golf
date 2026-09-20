@@ -85,50 +85,55 @@ export function turnBannerModel(props: TurnBannerProps): TurnBannerModel {
 
   if (mode === 'battle') {
     const remaining = Math.max(0, Math.floor(stillPutting));
-    if (selfDnf) {
-      return {
-        key: 'battle-dnf',
-        title: 'Out of strokes',
-        detail: remaining > 0 ? `${remaining} still putting` : 'Waiting for the round to close',
-        accent: selfColor,
-        pulse: remaining > 0,
-        emphatic: false,
-      };
-    }
+    const hint = 'Drag back from the ball, then let go';
+
+    // Holed out: you are done, but the round is not. You now WATCH the others
+    // finish rather than dropping out of the room.
     if (selfHoled) {
       return {
         key: 'battle-holed',
         title: 'You are in \u{1F3AF}',
         detail:
-          remaining > 0
-            ? remaining === 1
-              ? '1 player still putting'
-              : `${remaining} players still putting`
-            : 'Everyone is done',
+          activeName !== null
+            ? `Watching ${activeName} putt`
+            : remaining > 0
+              ? `${remaining} still to finish`
+              : 'Everyone is done',
         accent: selfColor,
-        pulse: remaining > 0,
+        pulse: false,
         emphatic: false,
       };
     }
-    // Everyone plays the SAME hole at the same time, so this banner is the only
-    // place that can tell a battle player it is their shot. It previously showed
-    // only "N players still putting", which reads as "wait" and never explains
-    // how to hit the ball — players got stuck staring at it.
-    const hint = 'Drag back from the ball, then let go';
+
+    if (selfDnf) {
+      return {
+        key: 'battle-dnf',
+        title: 'Out of hits',
+        detail: activeName !== null ? `Watching ${activeName} putt` : 'Waiting for the round to close',
+        accent: selfColor,
+        pulse: false,
+        emphatic: false,
+      };
+    }
+
+    if (isMyTurn) {
+      return {
+        key: 'battle-your-shot',
+        title: selfStrokes === 0 ? 'Take your shot' : 'Your shot',
+        detail: hint,
+        accent: selfColor,
+        pulse: true,
+        emphatic: true,
+      };
+    }
+
     return {
-      key: 'battle-playing',
-      title: selfStrokes === 0 ? 'Take your shot' : 'Your shot',
-      detail:
-        selfStrokes === 0
-          ? hint
-          : remaining > 1
-            ? `${remaining} players still putting`
-            : remaining === 1
-              ? 'You are the last one putting'
-              : hint,
-      accent: selfColor,
-      pulse: selfStrokes === 0,
-      emphatic: selfStrokes === 0,
+      key: 'battle-waiting',
+      title: activeName === null ? 'Next up…' : `${activeName} is putting`,
+      detail: remaining > 1 ? `${remaining} still to finish` : 'You are up next',
+      accent: activeColor ?? selfColor,
+      pulse: true,
+      emphatic: false,
     };
   }
 

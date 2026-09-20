@@ -135,7 +135,7 @@ function withRound(state: GameState, round: RoundState | null): GameState {
  */
 function ensureTurn(state: GameState): GameState {
   const round = state.roundState;
-  if (round === null || round.mode !== 'together' || round.completed) return state;
+  if (round === null || round.completed) return state;
   const active = round.activePlayerId;
   if (active !== null && isEligibleForTurn(state, active)) return state;
   const next = nextTurn(state);
@@ -174,6 +174,9 @@ function buildRound(args: {
   readonly startedAt: Timestamp;
   readonly holeOutCounter: number;
   readonly completed: boolean;
+  /** Co-op only: where the shared ball currently sits. Defaults to the tee. */
+  readonly ball?: Vec2;
+  readonly ballHoled?: boolean;
 }): RoundState {
   if (args.mode === 'together') {
     const first = args.variants[0];
@@ -182,6 +185,9 @@ function buildRound(args: {
       mode: 'together',
       roundIndex: args.roundIndex,
       level,
+      // One ball for the whole group; it starts on the tee.
+      ball: args.ball ?? level.ballStart,
+      ballHoled: args.ballHoled ?? false,
       turnOrder: args.turnOrder,
       turnCursor: args.turnCursor,
       activePlayerId: args.activePlayerId,
@@ -195,6 +201,11 @@ function buildRound(args: {
     mode: 'battle',
     roundIndex: args.roundIndex,
     levels: levelsFor(args.roomSeed, args.roundIndex, args.variants),
+    // Battle takes turns too. Playing simultaneously made the room feel like
+    // several people playing solo in the same tab.
+    turnOrder: args.turnOrder,
+    turnCursor: args.turnCursor,
+    activePlayerId: args.activePlayerId,
     startedAt: args.startedAt,
     holeOutCounter: args.holeOutCounter,
     completed: args.completed,
@@ -299,6 +310,8 @@ function roundFromSnapshot(snapshot: RoundSnapshot | null, roomSeed: number): Ro
     startedAt: snapshot.startedAt,
     holeOutCounter: Math.max(0, safeInt(snapshot.holeOutCounter, 0)),
     completed: snapshot.completed,
+    ball: snapshot.ball,
+    ballHoled: snapshot.ballHoled,
   });
 }
 
@@ -447,13 +460,42 @@ function applyShotOutcome(state: GameState, outcome: ShotOutcome): GameState {
     nextPlayer.currentPos.y === player.currentPos.y;
   if (unchanged) return state;
 
+  // ---- co-op: one shared ball -------------------------------------------
+  //
+  // In 'together' the ball belongs to the GROUP, not the shooter. The resting
+  // position goes onto the round, and every player's `currentPos` mirrors it so
+  // aiming and rendering keep reading one consistent value. When it drops,
+  // everybody holed out — there is no individual winner to single out.
+  if (round !== null && round.mode === 'together') {
+    const ball = safeVec(outcome.restPos, round.ball);
+    const ballHoled = round.ballHoled || outcome.holed;
+    const shared: Record<PlayerId, PlayerState> = { ...state.players };
+    for (const id of Object.keys(shared) as PlayerId[]) {
+      const p = shared[id];
+      if (p === undefined) continue;
+      shared[id] = {
+        ...p,
+        // Only the shooter's stroke count moves.
+        strokes: id === outcome.playerId ? strokes : p.strokes,
+        currentPos: ball,
+        holed: ballHoled,
+        holeOutOrder: ballHoled ? (p.holeOutOrder ?? 1) : null,
+      };
+    }
+    const nextState: GameState = { ...state, players: shared };
+    return withRound(nextState, {
+      ...round,
+      ball,
+      ballHoled,
+      holeOutCounter: ballHoled ? Math.max(1, round.holeOutCounter) : round.holeOutCounter,
+    });
+  }
+
   const players = withPlayer(state.players, nextPlayer);
   const next: GameState = { ...state, players };
   if (round === null || holeOutCounter === round.holeOutCounter) return next;
-  // Narrowed per variant so the discriminant survives the spread.
-  const bumped: RoundState =
-    round.mode === 'together' ? { ...round, holeOutCounter } : { ...round, holeOutCounter };
-  return withRound(next, bumped);
+  // 'together' returned above, so only the battle variant reaches here.
+  return withRound(next, { ...round, holeOutCounter });
 }
 
 // ---------------------------------------------------------------------------
@@ -504,15 +546,18 @@ function handleNet(state: GameState, message: NetMessage): GameState {
       });
 
       const round = applied.roundState;
-      if (round === null || round.mode !== 'together' || round.completed) return applied;
+      if (round === null || round.completed) return applied;
 
       const activeId = message.nextPlayerId;
       if (round.activePlayerId === activeId) return applied;
-      return withRound(applied, {
-        ...round,
-        activePlayerId: activeId,
-        turnCursor: activeId === null ? round.turnCursor : turnCursorFor(applied, activeId),
-      });
+      const cursor = activeId === null ? round.turnCursor : turnCursorFor(applied, activeId);
+      // Narrowed per variant so the discriminant survives the spread.
+      return withRound(
+        applied,
+        round.mode === 'together'
+          ? { ...round, activePlayerId: activeId, turnCursor: cursor }
+          : { ...round, activePlayerId: activeId, turnCursor: cursor },
+      );
     }
 
     case 'PLAYER_REACHED_GOAL': {
@@ -544,14 +589,14 @@ function handleNet(state: GameState, message: NetMessage): GameState {
       }
 
       const roomSeed = safeInt(message.roomSeed, state.roomSeed) >>> 0;
-      const turnOrder = message.mode === 'together' ? message.turnOrder : [];
+      const turnOrder = message.turnOrder;
       const round = buildRound({
         mode: message.mode,
         roomSeed,
         roundIndex,
         variants: message.variants,
         turnOrder,
-        activePlayerId: message.mode === 'together' ? message.activePlayerId : null,
+        activePlayerId: message.activePlayerId,
         turnCursor: 0,
         startedAt: message.startedAt,
         holeOutCounter: 0,
@@ -571,12 +616,14 @@ function handleNet(state: GameState, message: NetMessage): GameState {
         results: null,
       };
 
-      if (round.mode !== 'together') return next;
       const active = round.activePlayerId;
-      return withRound(next, {
-        ...round,
-        turnCursor: active === null ? 0 : turnCursorFor(next, active),
-      });
+      const cursor = active === null ? 0 : turnCursorFor(next, active);
+      return withRound(
+        next,
+        round.mode === 'together'
+          ? { ...round, turnCursor: cursor }
+          : { ...round, turnCursor: cursor },
+      );
     }
 
     case 'ROUND_COMPLETED': {
@@ -598,10 +645,12 @@ function handleNet(state: GameState, message: NetMessage): GameState {
 
       const next: GameState = { ...state, players, status: 'round-summary' };
       if (round === null || round.roundIndex !== roundIndex) return next;
-      if (round.mode === 'together') {
-        return withRound(next, { ...round, completed: true, activePlayerId: null });
-      }
-      return withRound(next, { ...round, completed: true });
+      return withRound(
+        next,
+        round.mode === 'together'
+          ? { ...round, completed: true, activePlayerId: null }
+          : { ...round, completed: true, activePlayerId: null },
+      );
     }
 
     case 'GAME_ENDED': {
@@ -677,14 +726,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       });
       if (applied === state) return state;
       const round = applied.roundState;
-      if (round === null || round.mode !== 'together' || round.completed) return applied;
+      if (round === null || round.completed) return applied;
       // Only the player who just swung passes the turn on.
       if (round.activePlayerId !== action.playerId) return applied;
       const next = nextTurn(applied);
+      const nextCursor = next === null ? round.turnCursor : turnCursorFor(applied, next);
       return withRound(applied, {
         ...round,
         activePlayerId: next,
-        turnCursor: next === null ? round.turnCursor : turnCursorFor(applied, next),
+        turnCursor: nextCursor,
       });
     }
 

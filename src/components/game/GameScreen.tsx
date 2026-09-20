@@ -66,6 +66,7 @@ import { PlayerRail } from './PlayerRail';
 import { PowerMeter } from './PowerMeter';
 import { RoundSummary } from './RoundSummary';
 import { TurnBanner } from './TurnBanner';
+import { Confetti } from './Confetti';
 
 /** Synthetic drag length (px) reported for keyboard aiming at full power. */
 const KEYBOARD_DRAG_PIXELS = 160;
@@ -262,8 +263,30 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
 
   const balls = useMemo<readonly BallView[]>(() => {
     if (!game || !selfId) return [];
-    if (game.mode === 'together') return selectBallViews(game, selfId);
-    return self ? [ballViewFor(self, selfId)] : [];
+    const round = game.roundState;
+
+    // Co-op is ONE ball for the whole group. It is tinted with the colour of
+    // whoever is up, so you can see at a glance whose hit is coming next.
+    if (round !== null && round.mode === 'together') {
+      const active = round.activePlayerId === null ? null : game.players[round.activePlayerId];
+      const tint = active?.color ?? self?.color;
+      if (tint === undefined) return [];
+      return [
+        {
+          playerId: round.activePlayerId ?? selfId,
+          color: tint,
+          pos: round.ball,
+          isSelf: round.activePlayerId === selfId,
+          holed: round.ballHoled,
+          label: active ? active.displayName : 'Our ball',
+        },
+      ];
+    }
+
+    // Battle shares one course now, so show EVERY player's ball on it. Seeing
+    // the others' balls beside yours is the difference between a group game and
+    // several people playing solo in the same room.
+    return selectBallViews(game, selfId);
   }, [game, selfId, self]);
 
   const opponentBoards = useMemo<readonly OpponentBoard[]>(() => {
@@ -277,6 +300,28 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
     }
     return boards;
   }, [game, players, selfId]);
+
+  /**
+   * Fires the confetti once per sink.
+   *
+   * Co-op celebrates the shared ball dropping — that is a group achievement, so
+   * everybody's screen celebrates. Battle celebrates YOUR ball dropping; you
+   * then stay in the round and watch the others finish.
+   */
+  const celebrateKey = useMemo<string | null>(() => {
+    if (!game || !selfId) return null;
+    const round = game.roundState;
+    if (round === null) return null;
+    if (round.mode === 'together') {
+      return round.ballHoled ? `r${round.roundIndex}:together` : null;
+    }
+    return self?.holed === true ? `r${round.roundIndex}:${selfId}` : null;
+  }, [game, self, selfId]);
+
+  const celebrateColors = useMemo<readonly string[]>(
+    () => players.map((player) => player.color),
+    [players],
+  );
 
   const mayShoot =
     game !== null && selfId !== null && !busy && game.status === 'playing' && canShoot(game, selfId);
@@ -534,6 +579,8 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
     <main
       className={cn('relative flex h-[100dvh] w-full overflow-hidden bg-[#070A0E] text-white', className)}
     >
+      {/* Sinking a putt is the whole point of the game, so it gets a party. */}
+      <Confetti trigger={celebrateKey} colors={celebrateColors} />
       {/* ---- course column ---- */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         <div ref={stageRef} className="absolute inset-0 flex items-center justify-center p-1">

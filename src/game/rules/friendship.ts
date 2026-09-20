@@ -14,7 +14,7 @@
  * Pure: no timers, no randomness, no Date.now, no I/O.
  */
 
-import { FRIENDSHIP_CYCLE_FROM, FRIENDSHIP_TIERS } from '@/game/config';
+import { FRIENDSHIP_CYCLE_FROM, FRIENDSHIP_TIERS, LIMITS } from '@/game/config';
 import type { FriendshipTier, GameState, PlayerId, PlayerState, RoundSummary } from '@/types';
 import { isStillPlaying, playersInJoinOrder } from './competitive';
 
@@ -89,17 +89,39 @@ export function tierLabel(tier: FriendshipTier): string {
 /** The turn order, filtered down to players the room actually knows about. */
 export function liveTurnOrder(state: GameState): readonly PlayerId[] {
   const round = state.roundState;
-  if (round === null || round.mode !== 'together') {
-    return playersInJoinOrder(state).map((player) => player.id);
-  }
+  // BOTH modes take turns now. Battle used to let everyone putt at once, which
+  // made a room of friends feel like several people playing solo side by side.
+  if (round === null) return playersInJoinOrder(state).map((player) => player.id);
   const known = round.turnOrder.filter((id) => state.players[id] !== undefined);
   return known.length > 0 ? known : playersInJoinOrder(state).map((player) => player.id);
+}
+
+/**
+ * The group's shared hit budget for a co-op round.
+ *
+ * Co-op is ONE ball, so a per-player stroke cap makes no sense — the cap has to
+ * belong to the group. Everyone contributes roughly `maxStrokes` worth of hits.
+ */
+export function collectiveStrokeCap(state: GameState): number {
+  const raw = state.settings.maxStrokes;
+  const perPlayer = Math.max(1, Number.isFinite(raw) ? Math.floor(raw) : LIMITS.MAX_STROKES);
+  const players = Math.max(1, playersInJoinOrder(state).length);
+  return perPlayer * players;
 }
 
 /** True when this player still owes the group a shot this round. */
 export function isEligibleForTurn(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
   if (player === undefined) return false;
+  if (!player.connected) return false;
+
+  const round = state.roundState;
+  if (round !== null && round.mode === 'together') {
+    // One shared ball: nobody is individually "out". The whole group stops
+    // together when the ball drops or the shared budget runs out.
+    if (round.ballHoled) return false;
+    return collectiveStrokesInRound(state) < collectiveStrokeCap(state);
+  }
   return isStillPlaying(state, player);
 }
 
@@ -112,7 +134,7 @@ export function isEligibleForTurn(state: GameState, playerId: PlayerId): boolean
  */
 export function nextTurn(state: GameState): PlayerId | null {
   const round = state.roundState;
-  if (round === null || round.mode !== 'together' || round.completed) return null;
+  if (round === null || round.completed) return null;
 
   const order = liveTurnOrder(state);
   if (order.length === 0) return null;
@@ -157,6 +179,13 @@ export function isTogetherRoundOver(state: GameState): boolean {
   if (round.completed) return true;
   const players = playersInJoinOrder(state);
   if (players.length === 0) return true;
+
+  if (round.mode === 'together') {
+    // The shared ball is the only thing that ends a co-op round.
+    if (round.ballHoled) return true;
+    if (collectiveStrokesInRound(state) >= collectiveStrokeCap(state)) return true;
+    return players.every((player) => !player.connected);
+  }
   return players.every((player) => !isStillPlaying(state, player));
 }
 

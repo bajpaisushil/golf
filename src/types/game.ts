@@ -227,6 +227,14 @@ export interface TogetherRoundState {
   readonly roundIndex: number;
   /** Everyone plays this one course. */
   readonly level: LevelSpec;
+  /**
+   * THE ball. Co-op is one shared ball that the group takes turns hitting —
+   * not a ball each. Its position lives here rather than on any player, because
+   * it belongs to the group. Per-player `strokes` record who contributed which
+   * hits; the round ends when THIS ball drops.
+   */
+  readonly ball: Vec2;
+  readonly ballHoled: boolean;
   /** Join-order rotation; players who holed out or are DNF are skipped. */
   readonly turnOrder: readonly PlayerId[];
   /** Index into turnOrder of whose turn it is. */
@@ -244,8 +252,15 @@ export interface TogetherRoundState {
 export interface BattleRoundState {
   readonly mode: 'battle';
   readonly roundIndex: number;
-  /** playerId -> that player's private course. */
+  /** playerId -> that player's course. Every entry is the SAME course: an equal
+   *  contest is the only way stroke counts are comparable. */
   readonly levels: PlayerMap<LevelSpec>;
+  /** Join-order rotation; players who holed out or are DNF are skipped. */
+  readonly turnOrder: readonly PlayerId[];
+  /** Index into turnOrder of whose turn it is. */
+  readonly turnCursor: number;
+  /** null while a shot is animating or the round is over. */
+  readonly activePlayerId: PlayerId | null;
   readonly startedAt: Timestamp;
   readonly holeOutCounter: number;
   readonly completed: boolean;
@@ -394,6 +409,9 @@ export interface RoundSnapshot {
   readonly variants: readonly PlayerVariant[];
   readonly holeOutCounter: number;
   readonly completed: boolean;
+  /** Co-op only: where the shared ball sits. Omitted means "still on the tee". */
+  readonly ball?: Vec2;
+  readonly ballHoled?: boolean;
 }
 
 /** Array-shaped, JSON-safe version of {@link GameState}. Sent in WELCOME and STATE_SYNC. */

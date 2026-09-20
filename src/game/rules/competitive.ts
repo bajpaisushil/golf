@@ -208,8 +208,10 @@ export function canShoot(state: GameState, playerId: PlayerId): boolean {
   if (player === undefined) return false;
   if (!isStillPlaying(state, player)) return false;
 
-  if (round.mode === 'together') return round.activePlayerId === playerId;
-  return true;
+  // Both modes take turns. Battle used to return `true` for everyone, letting
+  // the whole room putt at once — which read as several people playing solo
+  // rather than a group playing together.
+  return round.activePlayerId === playerId;
 }
 
 // ---------------------------------------------------------------------------

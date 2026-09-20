@@ -91,7 +91,7 @@ export const selectOrderedPlayers = memo1((state: GameState | null): readonly Pl
 export function selectActivePlayer(state: GameState | null): PlayerState | null {
   if (state === null) return null;
   const round = state.roundState;
-  if (round === null || round.mode !== 'together') return null;
+  if (round === null) return null;
   const activeId = round.activePlayerId;
   if (activeId === null) return null;
   const player = state.players[activeId];
@@ -102,10 +102,7 @@ export function selectIsMyTurn(state: GameState | null, self: PlayerId): boolean
   if (state === null || state.status !== 'playing') return false;
   const round = state.roundState;
   if (round === null || round.completed) return false;
-  if (round.mode === 'battle') {
-    const player = state.players[self];
-    return player !== undefined && isStillPlaying(state, player);
-  }
+  // Both modes rotate turns now, so "my turn" means the same thing in each.
   return round.activePlayerId === self;
 }
 

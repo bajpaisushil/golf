@@ -130,6 +130,9 @@ function createEmitter<T extends readonly unknown[]>(): {
   };
 }
 
+/** Extra announce times (ms after start) that make joining feel immediate. */
+const EARLY_ANNOUNCE_MS: readonly number[] = [400, 1100, 2200, 3500];
+
 export function createMesh(options: MeshOptions): Mesh {
   const { identity, signaling } = options;
   const maxPeers = options.maxPeers ?? LIMITS.MAX_PLAYERS - 1;
@@ -143,6 +146,8 @@ export function createMesh(options: MeshOptions): Mesh {
   let started = false;
   let closed = false;
   let announceTimer: ReturnType<typeof setInterval> | null = null;
+  /** Early-burst announce timers, cleared on close so nothing fires after teardown. */
+  const earlyTimers: ReturnType<typeof setTimeout>[] = [];
   let ticks = 0;
   let unsubEnvelope: Unsubscribe | null = null;
   let unsubStatus: Unsubscribe | null = null;
@@ -177,6 +182,7 @@ export function createMesh(options: MeshOptions): Mesh {
     }
   }
 
+  /** Extra announce times (ms after start) that make joining feel immediate. */
   function announce(): void {
     if (closed) return;
     void publish(makeEnvelope('announce', '', null));
@@ -415,10 +421,16 @@ export function createMesh(options: MeshOptions): Mesh {
 
     started = true;
     unsubEnvelope = signaling.onEnvelope(handleEnvelope);
-    unsubStatus = signaling.onStatus(() => {
-      // Status is read live from the channel in stats(); this subscription just
+    unsubStatus = signaling.onStatus((status) => {
+      // Status is read live from the channel in stats(); this subscription also
       // keeps the UI updating when signaling health changes.
       emitPeers();
+
+      // A relay that finishes connecting AFTER our first announce would never
+      // have seen it, and we would sit waiting for the next 4s tick — which is
+      // most of why joining a room used to feel like it hung for 10-20 seconds.
+      // Re-announce the moment a backend comes up.
+      if (status === 'open' && !closed && connectedCount() < maxPeers) announce();
     });
 
     const opened = await signaling.open(identity.roomCode, identity.peerId);
@@ -431,7 +443,17 @@ export function createMesh(options: MeshOptions): Mesh {
       return err(opened.error);
     }
 
+    // Early burst. Relays accept a subscription slightly before they start
+    // delivering, and a joiner arriving between two ticks should not wait a full
+    // interval to be noticed. These are tiny messages, so a few extra are cheap.
     announce();
+    for (const delay of EARLY_ANNOUNCE_MS) {
+      const timer = setTimeout(() => {
+        if (!closed && connectedCount() < maxPeers) announce();
+      }, delay);
+      earlyTimers.push(timer);
+    }
+
     announceTimer = setInterval(tick, TIMING.SIGNALING_ANNOUNCE_MS);
     return ok(undefined);
   }
@@ -479,6 +501,10 @@ export function createMesh(options: MeshOptions): Mesh {
     if (announceTimer !== null) {
       clearInterval(announceTimer);
       announceTimer = null;
+    }
+    while (earlyTimers.length > 0) {
+      const timer = earlyTimers.pop();
+      if (timer !== undefined) clearTimeout(timer);
     }
 
     // Tell the room we are going before the links die, so nobody waits out the

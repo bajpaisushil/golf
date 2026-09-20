@@ -17,7 +17,23 @@ import type { Hex, PlayerId, PlayerMap, RoomCode, ThemeId, Timestamp, Vec2 } fro
  * 'together' - Friendship Journey: ONE shared course, rotating turns, no winner.
  * 'battle'   - Friend Battle: every player gets their OWN course, all play at once.
  */
-export type GameMode = 'together' | 'battle';
+export type GameMode = 'together' | 'battle' | 'teams';
+
+/**
+ * Which shared ball a player putts.
+ *
+ * 'together' is ONE group (everybody), 'teams' is one group per team. Modelling
+ * both as "a ball per group" means co-op and team play share a single code path
+ * instead of forking every rule.
+ */
+export type GroupId = string;
+
+/** The single group used by 'together', where the whole room shares one ball. */
+export const SOLO_GROUP: GroupId = 'all';
+
+/** Team identifiers. Teams are just groups with a name and a colour. */
+export type TeamId = 'A' | 'B' | 'C' | 'D';
+export const TEAM_IDS: readonly TeamId[] = ['A', 'B', 'C', 'D'];
 
 /**
  * 'lobby'          - room open, waiting for the host to start
@@ -213,8 +229,10 @@ export interface PlayerState {
   readonly totalScore: number;
   /** Number of rounds this player finished 1st (battle mode only). */
   readonly roundWins: number;
-  /** Variant index fed to generateLevel() so every battle player gets a different course. */
+  /** Variant index fed to generateLevel(). Pinned to 0 so every player shares one course. */
   readonly levelSeedVariant: number;
+  /** Team play only: which team this player putts for. null in the other modes. */
+  readonly teamId: TeamId | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,18 +241,21 @@ export interface PlayerState {
 
 /** Cooperative round: one shared level, strict turn rotation. */
 export interface TogetherRoundState {
-  readonly mode: 'together';
+  /** 'together' = one ball for the room. 'teams' = one ball per team. */
+  readonly mode: 'together' | 'teams';
   readonly roundIndex: number;
   /** Everyone plays this one course. */
   readonly level: LevelSpec;
   /**
-   * THE ball. Co-op is one shared ball that the group takes turns hitting —
-   * not a ball each. Its position lives here rather than on any player, because
-   * it belongs to the group. Per-player `strokes` record who contributed which
-   * hits; the round ends when THIS ball drops.
+   * A ball per GROUP, keyed by {@link GroupId}.
+   *
+   * Co-op and team play are both "a shared ball that a group takes turns
+   * hitting", so the ball lives on the round rather than on any player. In
+   * 'together' there is exactly one entry ({@link SOLO_GROUP}); in 'teams' there
+   * is one per team. Per-player `strokes` record who contributed which hits.
    */
-  readonly ball: Vec2;
-  readonly ballHoled: boolean;
+  readonly balls: Readonly<Record<GroupId, Vec2>>;
+  readonly ballsHoled: Readonly<Record<GroupId, boolean>>;
   /** Join-order rotation; players who holed out or are DNF are skipped. */
   readonly turnOrder: readonly PlayerId[];
   /** Index into turnOrder of whose turn it is. */
@@ -350,6 +371,8 @@ export interface FriendshipTier {
 
 /** Host-owned, broadcast with SETTINGS_CHANGED. Changing these mid-round is rejected. */
 export interface GameSettings {
+  /** Team play only: how many teams the room splits into (2-4). */
+  readonly teamCount?: number;
   /** null = endless (the co-op default). */
   readonly totalRounds: number | null;
   /** Strokes after which a player is DNF for the round. */
@@ -396,6 +419,11 @@ export interface GameState {
 export interface PlayerVariant {
   readonly playerId: PlayerId;
   readonly variantIndex: number;
+  /**
+   * Team play only. Carried in ROUND_STARTED so every peer agrees on the teams
+   * without a second message — the host decides once, everyone rebuilds it.
+   */
+  readonly teamId?: TeamId | null;
 }
 
 /** Array-shaped, JSON-safe version of {@link RoundState} for WELCOME / STATE_SYNC. */
@@ -409,9 +437,9 @@ export interface RoundSnapshot {
   readonly variants: readonly PlayerVariant[];
   readonly holeOutCounter: number;
   readonly completed: boolean;
-  /** Co-op only: where the shared ball sits. Omitted means "still on the tee". */
-  readonly ball?: Vec2;
-  readonly ballHoled?: boolean;
+  /** Shared-ball modes: each group's ball. Omitted means "still on the tee". */
+  readonly balls?: Readonly<Record<GroupId, Vec2>>;
+  readonly ballsHoled?: Readonly<Record<GroupId, boolean>>;
 }
 
 /** Array-shaped, JSON-safe version of {@link GameState}. Sent in WELCOME and STATE_SYNC. */

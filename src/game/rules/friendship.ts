@@ -17,6 +17,7 @@
 import { FRIENDSHIP_CYCLE_FROM, FRIENDSHIP_TIERS, LIMITS } from '@/game/config';
 import type { FriendshipTier, GameState, PlayerId, PlayerState, RoundSummary } from '@/types';
 import { isStillPlaying, playersInJoinOrder } from './competitive';
+import { groupIdFor, groupStrokes, groupsOf } from './teams';
 
 // ---------------------------------------------------------------------------
 // Tiers
@@ -116,11 +117,12 @@ export function isEligibleForTurn(state: GameState, playerId: PlayerId): boolean
   if (!player.connected) return false;
 
   const round = state.roundState;
-  if (round !== null && round.mode === 'together') {
-    // One shared ball: nobody is individually "out". The whole group stops
-    // together when the ball drops or the shared budget runs out.
-    if (round.ballHoled) return false;
-    return collectiveStrokesInRound(state) < collectiveStrokeCap(state);
+  if (round !== null && round.mode !== 'battle') {
+    // A shared ball: nobody is individually "out". A group stops together when
+    // ITS ball drops or the shared budget runs out.
+    const group = groupIdFor(player, state.mode);
+    if (round.ballsHoled[group] === true) return false;
+    return groupStrokes(state, group) < collectiveStrokeCap(state);
   }
   return isStillPlaying(state, player);
 }
@@ -180,10 +182,14 @@ export function isTogetherRoundOver(state: GameState): boolean {
   const players = playersInJoinOrder(state);
   if (players.length === 0) return true;
 
-  if (round.mode === 'together') {
-    // The shared ball is the only thing that ends a co-op round.
-    if (round.ballHoled) return true;
-    if (collectiveStrokesInRound(state) >= collectiveStrokeCap(state)) return true;
+  if (round.mode !== 'battle') {
+    // The shared balls are the only thing that ends these rounds: every group
+    // must have holed out (or spent its budget) before the round closes.
+    const cap = collectiveStrokeCap(state);
+    const done = groupsOf(state).every(
+      (group) => round.ballsHoled[group] === true || groupStrokes(state, group) >= cap,
+    );
+    if (done) return true;
     return players.every((player) => !player.connected);
   }
   return players.every((player) => !isStillPlaying(state, player));

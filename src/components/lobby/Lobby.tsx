@@ -59,6 +59,10 @@ const MODE_COPY: Readonly<Record<GameMode, { readonly title: string; readonly bl
     title: 'Friend Battle',
     blurb: 'Everyone plays the same course at the same time. Fewer hits scores more points.',
   },
+  teams: {
+    title: 'Team Play',
+    blurb: 'Teams share a ball and take turns. Fewest hits as a team takes the hole.',
+  },
 };
 
 /** The room before the first putt: code, people, settings, start. */

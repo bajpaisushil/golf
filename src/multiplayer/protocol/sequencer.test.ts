@@ -102,6 +102,7 @@ const player = (id: string, joinSeq: number, connected = true): PlayerState => (
   totalScore: 0,
   roundWins: 0,
   levelSeedVariant: joinSeq,
+  teamId: null,
 });
 
 describe('host election', () => {

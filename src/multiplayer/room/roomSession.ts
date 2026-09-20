@@ -1,3 +1,4 @@
+import { DEFAULT_TEAM_COUNT, autoAssignTeams, interleaveByTeam } from '@/game/rules/teams';
 /**
  * ROOM SESSION - the orchestrator that turns a pile of DataChannels into a game.
  *
@@ -99,6 +100,7 @@ import {
   type RoundState,
   type ShotInput,
   type ShotResult,
+  type TeamId,
   type Timestamp,
   type Unsubscribe,
   type Vec2,
@@ -230,9 +232,9 @@ function shotKey(shot: ShotInput): string {
  * geometry locally, which is what keeps a join message under a kilobyte.
  */
 function roundSnapshotOf(round: RoundState, players: readonly PlayerState[]): RoundSnapshot {
-  if (round.mode === 'together') {
+  if (round.mode !== 'battle') {
     return {
-      mode: 'together',
+      mode: round.mode,
       roundIndex: round.roundIndex,
       startedAt: round.startedAt,
       turnOrder: round.turnOrder,
@@ -244,8 +246,8 @@ function roundSnapshotOf(round: RoundState, players: readonly PlayerState[]): Ro
       completed: round.completed,
       // The shared ball is group state, so it has to travel with the snapshot;
       // without it a late joiner would rebuild the round with the ball on the tee.
-      ball: round.ball,
-      ballHoled: round.ballHoled,
+      balls: round.balls,
+      ballsHoled: round.ballsHoled,
     };
   }
   return {
@@ -472,6 +474,7 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
       totalScore: 0,
       roundWins: 0,
       levelSeedVariant: 0,
+      teamId: null,
     };
     return { ...draft, levelSeedVariant: variantIndexFor(draft, state.mode) };
   }
@@ -489,7 +492,7 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
   function levelFor(playerId: PlayerId): LevelSpec | null {
     const round = state.roundState;
     if (round === null) return null;
-    if (round.mode === 'together') return round.level;
+    if (round.mode !== 'battle') return round.level;
     const level = round.levels[playerId];
     return level === undefined ? null : level;
   }
@@ -781,7 +784,19 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
 
   function startRound(roundIndex: number): void {
     const players = playersOf(state).filter((player) => player.connected);
-    const turnOrder = players.map((player) => player.id);
+
+    // Anyone without a team gets one, balanced round-robin by join order.
+    const assigned =
+      state.mode === 'teams'
+        ? autoAssignTeams(players, state.settings.teamCount ?? DEFAULT_TEAM_COUNT)
+        : ({} as Record<PlayerId, TeamId>);
+
+    // Interleave the rotation so teams alternate instead of one team playing out
+    // its whole roster first — that is what makes it feel like a contest.
+    const turnOrder =
+      state.mode === 'teams'
+        ? interleaveByTeam(players, assigned)
+        : players.map((player) => player.id);
     // Both modes take turns, so both need a first player.
     const first = turnOrder[0] ?? null;
 
@@ -792,9 +807,12 @@ export function createRoomSession(options: RoomSessionOptions): RoomSession {
       mode: state.mode,
       roomSeed: state.roomSeed,
       // Only the variant INDEX travels; geometry is regenerated on each peer.
+      // Team play: the HOST decides the teams and ships them with the round, so
+      // every peer rebuilds the same groups without a second round trip.
       variants: players.map((player) => ({
         playerId: player.id,
         variantIndex: variantIndexFor(player, state.mode),
+        teamId: state.mode === 'teams' ? (player.teamId ?? assigned[player.id] ?? null) : null,
       })),
       turnOrder,
       activePlayerId: first,

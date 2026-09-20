@@ -115,7 +115,7 @@ export function selectMyLevel(state: GameState | null, self: PlayerId): LevelSpe
   if (state === null) return null;
   const round = state.roundState;
   if (round === null) return null;
-  if (round.mode === 'together') return round.level;
+  if (round.mode !== 'battle') return round.level;
   const level = round.levels[self];
   return level === undefined ? null : level;
 }

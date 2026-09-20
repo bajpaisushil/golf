@@ -62,6 +62,7 @@ import { clampName } from '@/utils/format';
 import { newPeerId, newPlayerId } from '@/utils/id';
 import { generateRoomCode, isRoomCode, normaliseRoomCode } from '@/utils/roomCode';
 import { clearIdentity, loadIdentity, loadResume, saveIdentity } from '@/utils/storage';
+import { holdIdentity, isIdentityHeld } from '@/utils/tabClaim';
 
 import { normaliseSettings } from './gameReducer';
 import { useGameStore } from './store';
@@ -106,6 +107,8 @@ interface SessionBundle {
 }
 
 let activeBundle: SessionBundle | null = null;
+/** Answers "is this player id in use?" for as long as this tab holds it. */
+let claimRelease: (() => void) | null = null;
 let mountCount = 0;
 let pendingTeardown: ReturnType<typeof setTimeout> | null = null;
 
@@ -129,6 +132,11 @@ function nowMs(): number {
 }
 
 function teardownSession(options: { readonly forget: boolean }): void {
+  // Stop answering claim probes: this id is free for another tab to resume.
+  if (claimRelease !== null) {
+    claimRelease();
+    claimRelease = null;
+  }
   const bundle = activeBundle;
   activeBundle = null;
   if (bundle === null) {
@@ -190,11 +198,11 @@ function deriveConnection(peers: readonly PeerInfo[]): ConnectionState {
  * sessionStorage for this tab, plus an EXPIRING localStorage hint so a closed
  * tab can rejoin. Neither holds anything sensitive: id, name, room code.
  */
-function buildIdentity(args: {
+async function buildIdentity(args: {
   readonly name: string;
   readonly code: RoomCode;
   readonly createdRoom: boolean;
-}): { readonly identity: RoomIdentity; readonly reconnect: boolean } {
+}): Promise<{ readonly identity: RoomIdentity; readonly reconnect: boolean }> {
   // This TAB's identity wins. It is the only per-tab record, so two tabs on one
   // device stay two distinct players rather than fighting over one seat.
   const stored = loadIdentity();
@@ -203,8 +211,13 @@ function buildIdentity(args: {
   // Nothing in this tab, but the browser may still hold an unexpired resume hint
   // from a tab that was closed. Reusing its playerId is what lets the host give
   // the seat back instead of seating a duplicate player.
+  //
+  // But localStorage is shared by every tab, so we must not adopt an id that a
+  // LIVE tab is already playing as — that would put two tabs on one seat and the
+  // room would show one player instead of two. Ask first.
   const hint = reuse ? null : loadResume(Date.now());
-  const resumable = hint !== null && hint.roomCode === args.code;
+  const resumable =
+    hint !== null && hint.roomCode === args.code && !(await isIdentityHeld(hint.playerId));
 
   return {
     reconnect: reuse || resumable,
@@ -335,8 +348,9 @@ async function createRoomImpl(args: {
   teardownSession({ forget: true });
 
   const code = generateRoomCode();
-  const { identity } = buildIdentity({ name, code, createdRoom: true });
+  const { identity } = await buildIdentity({ name, code, createdRoom: true });
   saveIdentity(identity);
+  claimRelease = holdIdentity(identity.playerId);
 
   const attached = await attachSession({
     identity,
@@ -365,8 +379,9 @@ async function joinRoomImpl(args: {
   // Keep the stored identity: rejoining the same room must reuse our playerId.
   teardownSession({ forget: false });
 
-  const { identity, reconnect } = buildIdentity({ name, code, createdRoom: false });
+  const { identity, reconnect } = await buildIdentity({ name, code, createdRoom: false });
   saveIdentity(identity);
+  claimRelease = holdIdentity(identity.playerId);
 
   // Mode and settings arrive authoritatively in WELCOME; these are only what the
   // local state starts from before the host answers.

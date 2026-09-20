@@ -67,6 +67,8 @@ import { PowerMeter } from './PowerMeter';
 import { RoundSummary } from './RoundSummary';
 import { TurnBanner } from './TurnBanner';
 import { Confetti } from './Confetti';
+import { TEAM_META, groupIdFor, groupsOf, playersInGroup } from '@/game/rules/teams';
+import type { TeamId } from '@/types';
 
 /** Synthetic drag length (px) reported for keyboard aiming at full power. */
 const KEYBOARD_DRAG_PIXELS = 160;
@@ -267,20 +269,23 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
 
     // Co-op is ONE ball for the whole group. It is tinted with the colour of
     // whoever is up, so you can see at a glance whose hit is coming next.
-    if (round !== null && round.mode === 'together') {
+    if (round !== null && round.mode !== 'battle') {
+      // One ball per group: a single ball in co-op, one per team in team play.
       const active = round.activePlayerId === null ? null : game.players[round.activePlayerId];
-      const tint = active?.color ?? self?.color;
-      if (tint === undefined) return [];
-      return [
-        {
-          playerId: round.activePlayerId ?? selfId,
-          color: tint,
-          pos: round.ball,
-          isSelf: round.activePlayerId === selfId,
-          holed: round.ballHoled,
-          label: active ? active.displayName : 'Our ball',
-        },
-      ];
+      const activeGroup = groupIdFor(active ?? null, game.mode);
+      return groupsOf(game).map((group) => {
+        const meta = TEAM_META[group as TeamId];
+        const members = playersInGroup(game, group);
+        const tint = meta?.color ?? members[0]?.color ?? self?.color ?? '#F7F7F2';
+        return {
+          playerId: members[0]?.id ?? selfId,
+          color: tint as BallView['color'],
+          pos: round.balls[group] ?? round.level.ballStart,
+          isSelf: group === activeGroup,
+          holed: round.ballsHoled[group] === true,
+          label: meta ? `${meta.name} team` : 'Our ball',
+        };
+      });
     }
 
     // Battle shares one course now, so show EVERY player's ball on it. Seeing
@@ -312,8 +317,10 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
     if (!game || !selfId) return null;
     const round = game.roundState;
     if (round === null) return null;
-    if (round.mode === 'together') {
-      return round.ballHoled ? `r${round.roundIndex}:together` : null;
+    if (round.mode !== 'battle') {
+      // Celebrate when YOUR group's ball drops.
+      const group = groupIdFor(self ?? null, game.mode);
+      return round.ballsHoled[group] === true ? `r${round.roundIndex}:${group}` : null;
     }
     return self?.holed === true ? `r${round.roundIndex}:${selfId}` : null;
   }, [game, self, selfId]);

@@ -258,7 +258,7 @@ export function rankPlayers(results: readonly PlayerRoundResult[]): readonly Pla
 export function parForPlayer(state: GameState, playerId: PlayerId): number {
   const round = state.roundState;
   if (round === null) return FALLBACK_PAR;
-  if (round.mode === 'together') return Math.max(1, safeInt(round.level.par, FALLBACK_PAR));
+  if (round.mode !== 'battle') return Math.max(1, safeInt(round.level.par, FALLBACK_PAR));
   const level = round.levels[playerId];
   return level === undefined ? FALLBACK_PAR : Math.max(1, safeInt(level.par, FALLBACK_PAR));
 }

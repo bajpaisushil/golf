@@ -19,6 +19,7 @@
 
 import type {
   GameEndReason,
+  GameMode,
   GameResults,
   GameSettings,
   GameSnapshot,
@@ -168,7 +169,7 @@ export interface PlayerReachedGoalMessage extends NetMessageBase {
 export interface RoundStartedMessage extends NetMessageBase {
   readonly type: 'ROUND_STARTED';
   readonly roundIndex: number;
-  readonly mode: 'together' | 'battle';
+  readonly mode: GameMode;
   readonly roomSeed: number;
   /** In 'together' every entry carries the SAME variantIndex (0). */
   readonly variants: readonly PlayerVariant[];
@@ -416,7 +417,7 @@ const PAYLOAD_VALIDATORS: Readonly<Record<NetMessageType, PayloadValidator>> = {
     isStr(m.playerId) && isInt(m.roundIndex) && isInt(m.strokes) && isInt(m.holeOutOrder),
   ROUND_STARTED: (m) =>
     isInt(m.roundIndex) &&
-    (m.mode === 'together' || m.mode === 'battle') &&
+    (m.mode === 'together' || m.mode === 'battle' || m.mode === 'teams') &&
     isInt(m.roomSeed) &&
     isArrayOf(m.variants, isVariant) &&
     isArrayOf(m.turnOrder, isStr) &&

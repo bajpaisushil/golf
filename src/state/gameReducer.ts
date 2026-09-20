@@ -30,6 +30,8 @@ import {
   turnCursorFor,
 } from '@/game/rules';
 import { HOST_ONLY } from '@/multiplayer/protocol/messages';
+import { SOLO_GROUP, TEAM_IDS } from '@/types';
+import { groupIdFor } from '@/game/rules/teams';
 import type { NetMessage, NetMessageType } from '@/multiplayer/protocol/messages';
 import type {
   BattleRoundState,
@@ -38,6 +40,7 @@ import type {
   GameSnapshot,
   GameState,
   GameStatus,
+  GroupId,
   LevelSpec,
   PlayerId,
   PlayerMap,
@@ -46,6 +49,7 @@ import type {
   RoomIdentity,
   RoundSnapshot,
   RoundState,
+  TeamId,
   Timestamp,
   TogetherRoundState,
   Vec2,
@@ -174,20 +178,40 @@ function buildRound(args: {
   readonly startedAt: Timestamp;
   readonly holeOutCounter: number;
   readonly completed: boolean;
-  /** Co-op only: where the shared ball currently sits. Defaults to the tee. */
-  readonly ball?: Vec2;
-  readonly ballHoled?: boolean;
+  /** Shared-ball modes: where each group's ball sits. Defaults to the tee. */
+  readonly balls?: Readonly<Record<GroupId, Vec2>>;
+  readonly ballsHoled?: Readonly<Record<GroupId, boolean>>;
 }): RoundState {
-  if (args.mode === 'together') {
+  if (args.mode !== 'battle') {
     const first = args.variants[0];
     const level = generateLevel(args.roomSeed, args.roundIndex, safeInt(first?.variantIndex ?? 0, 0));
+    // One ball per GROUP. 'together' has exactly one group (the whole room);
+    // 'teams' has one per team that actually has players in it.
+    const groups: GroupId[] =
+      args.mode === 'teams'
+        ? Array.from(
+            new Set(
+              args.variants
+                .map((variant) => variant.teamId)
+                .filter((id): id is TeamId => id !== null && id !== undefined),
+            ),
+          )
+        : [SOLO_GROUP];
+    if (groups.length === 0) groups.push(TEAM_IDS[0]!);
+
+    const balls: Record<GroupId, Vec2> = {};
+    const ballsHoled: Record<GroupId, boolean> = {};
+    for (const group of groups) {
+      balls[group] = args.balls?.[group] ?? level.ballStart;
+      ballsHoled[group] = args.ballsHoled?.[group] ?? false;
+    }
+
     const together: TogetherRoundState = {
-      mode: 'together',
+      mode: args.mode === 'teams' ? 'teams' : 'together',
       roundIndex: args.roundIndex,
       level,
-      // One ball for the whole group; it starts on the tee.
-      ball: args.ball ?? level.ballStart,
-      ballHoled: args.ballHoled ?? false,
+      balls,
+      ballsHoled,
       turnOrder: args.turnOrder,
       turnCursor: args.turnCursor,
       activePlayerId: args.activePlayerId,
@@ -215,7 +239,7 @@ function buildRound(args: {
 
 /** The ball spawn for one player in a freshly built round. */
 function spawnFor(round: RoundState, playerId: PlayerId): Vec2 {
-  if (round.mode === 'together') return round.level.ballStart;
+  if (round.mode !== 'battle') return round.level.ballStart;
   const level = round.levels[playerId];
   return level === undefined ? ORIGIN : level.ballStart;
 }
@@ -227,7 +251,11 @@ function resetPlayersForRound(
   variants: readonly PlayerVariant[],
 ): PlayerMap<PlayerState> {
   const variantById = new Map<string, number>();
-  for (const variant of variants) variantById.set(variant.playerId, safeInt(variant.variantIndex, 0));
+  const teamById = new Map<string, TeamId | null>();
+  for (const variant of variants) {
+    variantById.set(variant.playerId, safeInt(variant.variantIndex, 0));
+    teamById.set(variant.playerId, variant.teamId ?? null);
+  }
 
   const next: Record<string, PlayerState> = {};
   for (const key of Object.keys(players)) {
@@ -241,6 +269,8 @@ function resetPlayersForRound(
       holeOutOrder: null,
       roundScore: 0,
       levelSeedVariant: variantById.get(player.id) ?? player.levelSeedVariant,
+      // Teams persist across rounds; a round reset must not dissolve them.
+      teamId: teamById.get(player.id) ?? player.teamId,
     };
   }
   return next;
@@ -272,6 +302,7 @@ export function createInitialState(args: {
     totalScore: 0,
     roundWins: 0,
     levelSeedVariant: 0,
+    teamId: null,
   };
 
   return {
@@ -310,8 +341,8 @@ function roundFromSnapshot(snapshot: RoundSnapshot | null, roomSeed: number): Ro
     startedAt: snapshot.startedAt,
     holeOutCounter: Math.max(0, safeInt(snapshot.holeOutCounter, 0)),
     completed: snapshot.completed,
-    ball: snapshot.ball,
-    ballHoled: snapshot.ballHoled,
+    balls: snapshot.balls,
+    ballsHoled: snapshot.ballsHoled,
   });
 }
 
@@ -383,6 +414,8 @@ function upsertPlayer(state: GameState, incoming: PlayerState): GameState {
     totalScore: safeInt(incoming.totalScore, 0),
     roundWins: Math.max(0, safeInt(incoming.roundWins, 0)),
     levelSeedVariant: Math.max(0, safeInt(incoming.levelSeedVariant, 0)),
+    // Team comes off the wire: the host assigns it, peers must not invent one.
+    teamId: incoming.teamId ?? null,
   };
   const players = withPlayer(state.players, sanitised);
   return ensureTurn({ ...state, players, playerOrder: orderOf(players) });
@@ -460,34 +493,42 @@ function applyShotOutcome(state: GameState, outcome: ShotOutcome): GameState {
     nextPlayer.currentPos.y === player.currentPos.y;
   if (unchanged) return state;
 
-  // ---- co-op: one shared ball -------------------------------------------
+  // ---- shared-ball modes: one ball per group ----------------------------
   //
-  // In 'together' the ball belongs to the GROUP, not the shooter. The resting
-  // position goes onto the round, and every player's `currentPos` mirrors it so
-  // aiming and rendering keep reading one consistent value. When it drops,
-  // everybody holed out — there is no individual winner to single out.
-  if (round !== null && round.mode === 'together') {
-    const ball = safeVec(outcome.restPos, round.ball);
-    const ballHoled = round.ballHoled || outcome.holed;
+  // In 'together' and 'teams' the ball belongs to a GROUP, not the shooter: the
+  // whole room in co-op, one team in team play. The resting position goes onto
+  // the round, and the group's members mirror it so aiming and rendering keep
+  // reading one consistent value. When it drops, that whole group holed out —
+  // there is no individual winner to single out inside a group.
+  if (round !== null && round.mode !== 'battle') {
+    const group = groupIdFor(player, state.mode);
+    const ball = safeVec(outcome.restPos, round.balls[group] ?? round.level.ballStart);
+    const holedNow = round.ballsHoled[group] === true || outcome.holed;
+
     const shared: Record<PlayerId, PlayerState> = { ...state.players };
     for (const id of Object.keys(shared) as PlayerId[]) {
       const p = shared[id];
       if (p === undefined) continue;
+      if (groupIdFor(p, state.mode) !== group) continue;
       shared[id] = {
         ...p,
         // Only the shooter's stroke count moves.
         strokes: id === outcome.playerId ? strokes : p.strokes,
         currentPos: ball,
-        holed: ballHoled,
-        holeOutOrder: ballHoled ? (p.holeOutOrder ?? 1) : null,
+        holed: holedNow,
+        holeOutOrder: holedNow ? (p.holeOutOrder ?? Math.max(1, round.holeOutCounter + 1)) : null,
       };
     }
+
     const nextState: GameState = { ...state, players: shared };
     return withRound(nextState, {
       ...round,
-      ball,
-      ballHoled,
-      holeOutCounter: ballHoled ? Math.max(1, round.holeOutCounter) : round.holeOutCounter,
+      balls: { ...round.balls, [group]: ball },
+      ballsHoled: { ...round.ballsHoled, [group]: holedNow },
+      holeOutCounter:
+        holedNow && round.ballsHoled[group] !== true
+          ? round.holeOutCounter + 1
+          : round.holeOutCounter,
     });
   }
 

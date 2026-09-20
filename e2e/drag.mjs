@@ -1,0 +1,36 @@
+import { chromium } from 'playwright';
+const S=process.env.S, MODE=process.env.MODE||'battle';
+const b=await chromium.launch();
+const ctx=await b.newContext({viewport:{width:1280,height:860}});
+const host=await ctx.newPage(), guest=await ctx.newPage();
+await host.goto('http://localhost:4123/',{waitUntil:'domcontentloaded'});
+await host.evaluate(()=>{try{sessionStorage.clear();localStorage.clear();}catch{}});
+await host.reload({waitUntil:'networkidle'}); await host.waitForTimeout(600);
+await host.getByText(MODE==='battle'?/^Friend Battle$/:/^Play Together$/).first().click();
+await host.waitForURL(/\/room/,{timeout:20000}).catch(()=>{});
+await host.waitForTimeout(2500);
+const code=new URL(host.url()).searchParams.get('code');
+await guest.goto(`http://localhost:4123/room/?code=${code}`,{waitUntil:'networkidle'});
+await guest.waitForTimeout(1500);
+const jb=guest.getByRole('button',{name:/^join the room$/i}).first();
+if(await jb.count()) await jb.click();
+await guest.waitForTimeout(4000);
+await host.getByRole('button',{name:/start|begin|tee off/i}).first().click({force:true}).catch(()=>{});
+await host.waitForTimeout(5000);
+
+const hits = async p=>(await p.innerText('body')).match(/(\d+)\s*HITS?\b/)?.[1] ?? '?';
+const box = await host.locator('canvas').first().boundingBox();
+// Deliberately start the drag in the MIDDLE of the course, nowhere near the ball.
+const x = box.x+box.width*0.30, y = box.y+box.height*0.40;
+console.log('before:', await hits(host));
+await host.mouse.move(x,y);
+await host.mouse.down();
+await host.mouse.move(x+30, y+130, {steps:18});
+await host.waitForTimeout(400);
+await host.screenshot({path:`${S}/09-mid-drag.png`});
+const mid = await host.innerText('body');
+console.log('mid-drag UI:', (mid.match(/(POWER|%|Release|Take your shot|Your shot)[^\n]{0,30}/g)||[]).slice(0,4).join(' | '));
+await host.mouse.up();
+await host.waitForTimeout(6000);
+console.log('after :', await hits(host));
+await b.close();

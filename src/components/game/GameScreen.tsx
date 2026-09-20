@@ -331,6 +331,12 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
     toCourse,
     onShoot,
     grabRadius: GRAB_RADIUS_CU,
+    // Drag from ANYWHERE on the course, not just from on top of the ball.
+    // Requiring the drag to start within the grab radius meant every drag that
+    // began a little wide did nothing at all, with no feedback explaining why —
+    // it read as "dragging is broken". The shot still launches from the ball;
+    // only the place you are allowed to start the gesture changed.
+    allowAnywhere: true,
   });
 
   // --- keyboard aiming ----------------------------------------------------

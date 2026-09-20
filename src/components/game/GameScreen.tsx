@@ -667,6 +667,11 @@ export function GameScreen({ toCourse: toCourseProp, className }: GameScreenProp
               selfDnf={!self.holed && self.strokes >= maxStrokes}
               stillPutting={stillPutting}
               selfStrokes={self.strokes}
+              alreadyFinishedBy={
+                mode === 'battle' && !self.holed
+                  ? (players.find((p) => p.holed && p.id !== selfId)?.displayName ?? null)
+                  : null
+              }
               busy={busy}
               roundOver={game.roundState?.completed ?? false}
               selfColor={self.color}

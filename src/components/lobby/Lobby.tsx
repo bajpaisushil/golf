@@ -31,6 +31,7 @@ import { ConnectionBanner } from './ConnectionBanner';
 import { PlayerRoster } from './PlayerRoster';
 import { RoomCodeCard } from './RoomCodeCard';
 import { RoundsSelector } from './RoundsSelector';
+import { ballFeelFromSlider, sliderFromBallFeel } from '@/game/config';
 
 export interface LobbyProps {
   readonly roomCode: RoomCode;
@@ -98,8 +99,8 @@ function SmoothnessSlider({
         min={0}
         max={100}
         step={1}
-        value={Math.round(Math.max(0, Math.min(1, value)) * 100)}
-        onChange={(event) => onChange(Number(event.target.value) / 100)}
+        value={Math.round(sliderFromBallFeel(value) * 100)}
+        onChange={(event) => onChange(ballFeelFromSlider(Number(event.target.value) / 100))}
         className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-[#4FD1C5]"
         aria-describedby="fg-smoothness-help"
       />

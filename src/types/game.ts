@@ -372,6 +372,8 @@ export interface FinalStanding {
   readonly roundWins: number;
   /** 1-based; ties share a rank. 0 in 'together' mode. */
   readonly rank: number;
+  /** Total time spent on this player's own turns, across every round played. */
+  readonly totalThinkTimeMs: number;
 }
 
 /** Why the game stopped. */

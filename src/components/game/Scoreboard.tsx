@@ -23,6 +23,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { withAlpha } from '@/game/rendering/palette';
 import type { FinalStanding, GameMode, Hex, PlayerId, PlayerState } from '@/types';
 import { cn } from '@/utils/cn';
+import { formatDuration } from '@/utils/format';
 
 const MEDALS: readonly string[] = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
 
@@ -66,6 +67,16 @@ export function Scoreboard({
   const competitive = mode === 'battle';
   const anyWins = standings.some((row) => row.roundWins > 0);
   const withWins = competitive && showRoundWins && anyWins;
+  /**
+   * Time only earns a column when it actually mattered — i.e. two players are
+   * level on hits, so the tiebreak had to be consulted. Showing it otherwise
+   * implies the game was decided on something it was not.
+   */
+  const withTime =
+    competitive &&
+    standings.some((row, i) =>
+      standings.some((other, j) => j !== i && other.totalStrokes === row.totalStrokes),
+    );
 
   return (
     <section
@@ -100,6 +111,11 @@ export function Scoreboard({
             <th scope="col" className="w-14 pb-1.5 text-right">
               {competitive ? 'Hits' : 'Steps'}
             </th>
+            {withTime ? (
+              <th scope="col" className="w-16 pb-1.5 text-right">
+                Time
+              </th>
+            ) : null}
             {competitive ? (
               <th scope="col" className="w-14 pb-1.5 text-right">
                 Points
@@ -177,6 +193,14 @@ export function Scoreboard({
                     {row.totalStrokes}
                   </span>
                 </td>
+
+                {withTime ? (
+                  <td className="py-1.5 text-right align-middle">
+                    <span className="font-mono text-[12px] tabular-nums text-white/40">
+                      {row.totalThinkTimeMs > 0 ? formatDuration(row.totalThinkTimeMs) : '—'}
+                    </span>
+                  </td>
+                ) : null}
 
                 {competitive ? (
                   <td className="py-1.5 text-right align-middle">

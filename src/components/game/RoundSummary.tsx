@@ -550,9 +550,9 @@ function BattleSummaryView(props: RoundSummaryProps): React.JSX.Element {
                   {columns.time ? (
                     <span
                       className="rounded-md bg-white/[0.04] px-1.5 py-[2px] font-mono text-[10px] tabular-nums text-white/40"
-                      title="Time spent on your own turns — only consulted when hits are level"
+                      title="Time you spent on your own turns — only consulted when hits are level"
                     >
-                      {result.thinkTimeMs > 0 ? formatDuration(result.thinkTimeMs) : '—'} thinking
+                      {result.thinkTimeMs > 0 ? formatDuration(result.thinkTimeMs) : '—'} time
                     </span>
                   ) : null}
                   {columns.penalties ? (

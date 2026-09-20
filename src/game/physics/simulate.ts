@@ -89,7 +89,12 @@ function clamp01(value: number): number {
 
 /** Speed (cu/s) for a 0..1 power. */
 export function shotSpeedFor(power: number): number {
-  return clamp01(power) * PHYSICS.MAX_SHOT_SPEED;
+  // Non-linear so short putts get real resolution. Uses only multiplication, so
+  // it stays bit-identical across engines (Math.pow with a non-integer exponent
+  // is NOT guaranteed identical, and would desync peers).
+  const p = clamp01(power);
+  const curved = p * (PHYSICS.POWER_TOE + (1 - PHYSICS.POWER_TOE) * p);
+  return curved * PHYSICS.MAX_SHOT_SPEED;
 }
 
 /** Slingshot power from a drag length in course units. */

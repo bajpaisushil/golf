@@ -95,7 +95,15 @@ function RoomRoute(): React.JSX.Element {
     const error = session.error;
     if (error === null || error === lastError.current) return;
     lastError.current = error;
-    toast.push({ title: 'Connection trouble', description: error, tone: 'bad' });
+    // Not every session error is a network problem. A refused shot ("not your
+    // turn", "too gentle") was being reported as "Connection trouble", which
+    // sent people hunting for a connection fault that did not exist.
+    const networky = /connect|signal|relay|peer|network|timeout|offline/i.test(error);
+    toast.push({
+      title: networky ? 'Connection trouble' : 'Cannot do that yet',
+      description: error,
+      tone: 'bad',
+    });
   }, [session.error, toast]);
 
   // A refresh (or a reopened link) rejoins silently when this browser already

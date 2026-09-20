@@ -36,6 +36,13 @@ export interface TurnBannerProps {
   readonly stillPutting?: number;
   /** Strokes the local player has taken this round. Drives the first-shot hint. */
   readonly selfStrokes?: number;
+  /**
+   * Battle only: who already holed out ahead of you this round, if anyone.
+   * You keep playing for hit-efficiency points, which are earned independently
+   * of placement and decide the game across rounds — so the banner says so
+   * rather than leaving you wondering why the round has not ended.
+   */
+  readonly alreadyFinishedBy?: string | null;
   /** A shot is animating — the banner steps back so it does not chatter. */
   readonly busy?: boolean;
   /** The round has finished but the summary is not up yet. */
@@ -67,6 +74,7 @@ export function turnBannerModel(props: TurnBannerProps): TurnBannerModel {
     selfDnf = false,
     stillPutting = 0,
     selfStrokes = 0,
+    alreadyFinishedBy = null,
     busy = false,
     roundOver = false,
     selfColor,
@@ -117,6 +125,16 @@ export function turnBannerModel(props: TurnBannerProps): TurnBannerModel {
     }
 
     if (isMyTurn) {
+      if (alreadyFinishedBy !== null) {
+        return {
+          key: 'battle-for-points',
+          title: 'Playing for points',
+          detail: `${alreadyFinishedBy} took the round — every hit you save still scores`,
+          accent: selfColor,
+          pulse: true,
+          emphatic: true,
+        };
+      }
       return {
         key: 'battle-your-shot',
         title: selfStrokes === 0 ? 'Take your shot' : 'Your shot',

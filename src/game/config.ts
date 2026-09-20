@@ -44,24 +44,44 @@ export interface PhysicsConfig {
   readonly WATER_PENALTY_STROKES: number;
   /** Drags shorter than this fraction of MAX_DRAG_CU cancel the shot instead of firing. */
   readonly MIN_POWER: number;
+  readonly POWER_TOE: number;
 }
 
 export const PHYSICS: PhysicsConfig = {
   DT: 1 / 120,
-  FRICTION: 1.15,
-  WALL_RESTITUTION: 0.78,
+  // Lower friction = the ball keeps rolling. At 1.15 a full-power putt died in
+  // about two seconds and never had a chance to work the walls.
+  FRICTION: 0.72,
+  // Livelier rails. At 0.78 the ball lost a fifth of its speed per bounce, so it
+  // thudded into a wall and stopped instead of coming back at you.
+  WALL_RESTITUTION: 0.88,
   BUMPER_RESTITUTION: 1.15,
   SAND_FRICTION_MULT: 3.6,
   STOP_SPEED: 1.1,
-  CAPTURE_SPEED: 26,
+  // A faster ball would otherwise skate straight over the cup, which would make
+  // the livelier physics feel punishing rather than fun.
+  CAPTURE_SPEED: 34,
   MAX_SIM_SECONDS: 12,
-  MAX_SHOT_SPEED: 120,
+  MAX_SHOT_SPEED: 145,
   MAX_DRAG_CU: 26,
   BALL_RADIUS: 1.1,
   PATH_SAMPLE_EVERY: 2,
   MAX_PATH_SAMPLES: 768,
   WATER_PENALTY_STROKES: 1,
-  MIN_POWER: 0.05,
+  // A gentle tap has to actually be gentle. At 0.05 with the livelier friction
+  // the softest legal shot still carried 6.4 course units, while the cup is only
+  // 2.2 across — so a ball sitting beside the hole could not be nudged in.
+  MIN_POWER: 0.015,
+  /**
+   * How responsive the very bottom of the drag is:
+   *   speed = MAX_SHOT_SPEED * power * (POWER_TOE + (1 - POWER_TOE) * power)
+   *
+   * 1 is the old linear response, where every small pull became a big shot and
+   * a ball beside the cup could not be nudged in. Lower values soften the toe of
+   * the curve, giving short putts real resolution, while full power is untouched
+   * (the curve always passes through 1 at power 1).
+   */
+  POWER_TOE: 0.28,
 };
 
 // ---------------------------------------------------------------------------
@@ -434,8 +454,36 @@ export const DEFAULT_QUALITY_TIER: QualityTier = 'medium';
 /** Round counts offered in the host UI. `null` = endless (co-op default). */
 export const ROUND_OPTIONS: readonly number[] = [3, 5, 10];
 
-/** Slider midpoint: a little damping, still crisp. 0 = rigid, 1 = volatile. */
-export const DEFAULT_BALL_SMOOTHING = 0.32;
+/**
+ * The two ends of the host's "Ball feel" slider, and where it starts.
+ *
+ * The slider hands out a 0..1 position; this maps it onto the damping actually
+ * applied to the rendered ball. Retune the feel here rather than hunting through
+ * the renderer — and note MOST_VOLATILE is deliberately below 1, because full
+ * damping makes the ball visibly lag its own shadow.
+ */
+export const BALL_FEEL = {
+  MOST_RIGID: 0,
+  MOST_VOLATILE: 0.72,
+  DEFAULT: 0.32,
+} as const;
+
+/** Maps a 0..1 slider position onto the damping the renderer uses. */
+export function ballFeelFromSlider(position: number): number {
+  const p = Math.max(0, Math.min(1, Number.isFinite(position) ? position : 0.5));
+  return BALL_FEEL.MOST_RIGID + (BALL_FEEL.MOST_VOLATILE - BALL_FEEL.MOST_RIGID) * p;
+}
+
+/** The inverse, so the slider can show where the current value sits. */
+export function sliderFromBallFeel(value: number): number {
+  const span = BALL_FEEL.MOST_VOLATILE - BALL_FEEL.MOST_RIGID;
+  if (span <= 0) return 0;
+  const v = Number.isFinite(value) ? value : BALL_FEEL.DEFAULT;
+  return Math.max(0, Math.min(1, (v - BALL_FEEL.MOST_RIGID) / span));
+}
+
+/** Kept for call sites that just want the starting value. */
+export const DEFAULT_BALL_SMOOTHING = BALL_FEEL.DEFAULT;
 
 export const DEFAULT_SETTINGS: GameSettings = {
   totalRounds: null,

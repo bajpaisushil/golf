@@ -374,6 +374,17 @@ export interface FinalStandingsOptions {
   readonly endedAt?: Timestamp;
 }
 
+/** Summed think time per player across every round in `history`. */
+function totalThinkTimeFrom(history: readonly RoundSummary[]): ReadonlyMap<PlayerId, number> {
+  const out = new Map<PlayerId, number>();
+  for (const summary of history) {
+    for (const result of summary.results) {
+      out.set(result.playerId, (out.get(result.playerId) ?? 0) + Math.max(0, result.thinkTimeMs));
+    }
+  }
+  return out;
+}
+
 function totalStrokesFrom(history: readonly RoundSummary[]): ReadonlyMap<PlayerId, number> {
   const totals = new Map<PlayerId, number>();
   for (const summary of history) {
@@ -396,6 +407,7 @@ export function finalStandings(
 ): GameResults {
   const history = options.history ?? [];
   const strokeTotals = totalStrokesFrom(history);
+  const thinkTotals = totalThinkTimeFrom(history);
   const players = playersInJoinOrder(state);
 
   const rows = players.map((player) => ({
@@ -404,6 +416,7 @@ export function finalStandings(
     totalScore: player.totalScore,
     totalStrokes: strokeTotals.get(player.id) ?? Math.max(0, player.strokes),
     roundWins: player.roundWins,
+    totalThinkTimeMs: thinkTotals.get(player.id) ?? Math.max(0, player.thinkTimeMs),
     joinSeq: player.joinSeq,
   }));
 
@@ -415,6 +428,7 @@ export function finalStandings(
       totalScore: row.totalScore,
       totalStrokes: row.totalStrokes,
       roundWins: row.roundWins,
+      totalThinkTimeMs: row.totalThinkTimeMs,
       rank: 0,
     }));
   } else {
@@ -444,6 +458,7 @@ export function finalStandings(
         displayName: row.displayName,
         totalScore: row.totalScore,
         totalStrokes: row.totalStrokes,
+        totalThinkTimeMs: row.totalThinkTimeMs,
         roundWins: row.roundWins,
         rank: currentRank,
       });

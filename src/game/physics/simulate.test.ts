@@ -101,8 +101,11 @@ describe('simulation safety', () => {
   });
 
   it('bounds the trajectory sample count so long shots cannot bloat memory', () => {
+    // The invariant is "bounded by the configured cap", not a magic number:
+    // lowering friction made shots roll for longer, which legitimately produces
+    // more samples. The downsampler is what must hold the line.
     const r = simulateShot(level, level.ballStart, aimAt(3, 96), 1);
-    expect(r.path.length).toBeLessThanOrEqual(256);
+    expect(r.path.length).toBeLessThanOrEqual(PHYSICS.MAX_PATH_SAMPLES);
   });
 
   it('treats zero power as a no-op rather than a lost turn', () => {
